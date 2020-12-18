@@ -142,7 +142,7 @@ bool PHYSFSX_init(int argc, char *argv[])
 		path = getenv(&home_environ_var[4]);
 		if (!path)
 # if !(defined(__APPLE__) && defined(__MACH__))
-	path = "~/.d" DESCENT_PATH_NUMBER "x-rebirth/";
+	path = "/switch/d" DESCENT_PATH_NUMBER "x-rebirth/";  //! "~/.d" DESCENT_PATH_NUMBER "x-rebirth/";
 # else
 	path = "~/Library/Preferences/D" DESCENT_PATH_NUMBER "X Rebirth/";
 # endif

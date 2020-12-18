@@ -1,70 +1,69 @@
-```
-                         __________
-__________/ DXX-Rebirth /
-```
-
-https://www.dxx-rebirth.com
+This is a port of dxx-rebirth (open-source engine for Descent 1/2) to Nintendo Switch. It's a homebrew app, so you need to be running custom firmware for it to work.
 
 
-## 0. Introduction:
+[1] BUILDING
+------------
 
-DXX-Rebirth is based on the late D1X and D2X source ports (which, in turn, were based on the original Descent source and LDescent). The Rebirth Team has spent a lot of time working to improve the source code by fixing old bugs and adding some improvements, while always staying true to our philosophy: Keep it Descent!
+If you're targeting Nintendo Switch, make sure you're using the `switch` branch. The `master` branch contains changes which are not specific to Switch and could be used on other platforms.
 
-It is the goal of DXX-Rebirth to keep Descent 1 & 2 alive and well, updating them for modern PCs while also keeping them the same games you remember playing back in 1995!
+You will need to install the [devkitPro](https://devkitpro.org/) toolchain. Make sure to include the following packages:
 
-> Now Material Defender...Prepare for Descent!
+    libnx switch-sdl2_image switch-sdl2_mixer switch-mesa
 
-## 1. Features:
+You'll need to build and install two additional libraries, [GLU](https://github.com/ptitSeb/GLU) and [GLAD](https://glad.dav1d.de/).
+For GLAD, I have used OpenGL 2.1 compatibility profile.
 
-DXX-Rebirth has every little feature you may remember from the original Descent 1&2 and much more.
+Then follow the usual steps to build dxx-rebirth.
 
-For example:
-
-* Full compatibility with Descent and Descent 2, including all expansions and third-party levels.
-* DXX-Rebirth runs on your favourite Operating System. We officially support Linux (and other \*NIXs), Mac OS X and Windows. The source code can also be compiled on many other systems!
-* OpenGL provides fast and smooth rendering - even on low-end systems.
-* Optionally you can enable several effects like Transparency, Colored Lighting, Texture Filtering, FSAA, etc.
-* Thanks to SDL, a wide variety of Joysticks are supported. Also you can use more Joysticks, buttons and axes than you can ever operate in your state of evolution.
-* Joystick, Keyboard and Mouse can be used simultaneously.
-* The games can display all resolutions and aspects supported by your monitor, including an option for VSync.
-* Besides MIDI and CD-Audio (Redbook), you can play your own custom Music from your hard drive or a separate AddOn.
-* Both games can utilize special AddOn packs to replace or expand the original game content.
-* Multiplayer via UDP protocol provides a fast and easy-to-use LAN and Online action. This includes reliable communication causing less glitches due to lost packets.
-* The ingame Demo-recording system has been improved. Demos are less glitchy and smaller while still still being backwards-compatible to earlier versions of the games.
-* Higher game speed will not cause glitches such as unacceptable fast homing projectiles, incredible high damage caused by several collisions or Fusion cannon, etc.
-* Player files, Savegames, Demos and Missions from DOS-Versions of the games can freely be used in DXX-Rebirth and vice versa.
-* Mac Command keys are now working - see F1 Help. Command-Q works much like a normal Mac program
-* Even more ...
+If you don't intend to do any coding and just want to play, grab the latest [release](https://github.com/dimag0g/dxx-rebirth/releases) instead.
 
 
-## 2. Installation:
+[2] SETUP
+---------
 
-See [INSTALL.markdown](INSTALL.markdown).
+You will need a copy of the official game to run this port. If you don't own the game, you can get the shareware game contents
+[here](https://www.dxx-rebirth.com/game-content/), which will let you have a first impression.
 
+dxx-rebirth root directory is hardcoded as `/switch/d1x-rebirth` and `/switch/d2x-rebirth` for Descent 1 and 2, respectively.
+Put the release files there, then add the files from your copy of the game or the shareware files.
+The release already includes addons from  [dxx-rebirth](https://www.dxx-rebirth.com/addons/): the high resolution pack for D1 and OGG music for both D1 and D2.
 
-## 3. Multiplayer:
+⚠ If you want to watch demos, copy the *.dem files into `DEMOS` folder inside `/switch/d1x-rebirth` and `/switch/d2x-rebirth`.
 
-DXX-Rebirth supports Multiplayer over UDP/IP.Using UDP/IP works over LAN and Internet. 
+⚠ For Descent 2, skip `INTRO.MLV`: if you copy it, the game will keep playing the intro which is currently impossible to skip.
 
-By default, each game communicates over UDP-Port 42424. This can be changed via the menus, command-line argument or .ini files. 
-
-Please be aware that if you host a game and players want to join your game online via direct IP connection, your specified game port should be forwarded on your router. 
-
-If you host your game on the Online Tracker and other players join via this method, port forwarding should not be necessary.
-
-If you only want to join a game, or host a game on LAN (not online), port forwarding should not be necessary. If you do experience problems, please check your NAT settings and/or Firewall.
-
-
-## 4. Legal stuff:
-
-See [COPYING.txt](COPYING.txt) and [GPL-3.txt](GPL-3.txt)
+Mods are supported in general, but I obviously didn't try all of them.
 
 
-## 5. Contact:
+[3] RUNNING
+-----------
 
-- https://www.dxx-rebirth.com/
-- zico [at] dxx-rebirth [dot] com
-   
-## 6. Issue Reporting
+This build of Aquaria was tested on 10.2.0|AMS 0.14.4|S (FAT32). exFAT is not recommended.
+Alternative controllers (keyboards, mouses, etc.) might work but weren't tested.
 
-Use GitHub issues tab report a [new issue](https://github.com/dxx-rebirth/dxx-rebirth/issues/new), be sure to add as much detail as possible in the template provided.
+Both games run at solid 60fps with currently enabled effect (transparency and dynamic lighting).
+More effects (like anisotropic filtering) are available in the video settings. Some combinations of settings may have an impact of the framerate.
+
+Game controls can be changed in the game options. Default configuration mimics the layout used by [Sublevel Zero](http://www.sigtrapgames.com/sublevelzero/)
+(not that I recommend that game, but it's the only zero-G shooter on Switch that I know and the layout it has seems reasonable):
+
+- L-stick - Accelerate/reverse and strafe left/right
+- L-stick push - Afterburner (D2 only)
+- R-stick - Look around
+- R-stick push - Toggle headlight (D2 only)
+- R/L - strafe up/down
+- Y/B - bank left/right (CCW/CW)
+- ⊖ - Open map
+- ⊕ - Menu
+- ZL/ZR - Fire primary/secondary
+- A - Fire flare
+- X - Rear view
+- D-pad down - Convert energy to shield (D2 only)
+- D-pad left/right - Cycle primary/secondary weapon
+
+[4] TODO
+--------
+
+Here's a list of known bugs / missing features, approximately in order of priority. Don't bother reporting those as issues.
+
+- none currently

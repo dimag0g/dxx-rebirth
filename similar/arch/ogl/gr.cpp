@@ -72,6 +72,117 @@
 #include "ogl_sync.h"
 #include <memory>
 
+struct _NWindow;
+typedef _NWindow NWindow;
+extern "C" NWindow* nwindowGetDefault(void); 
+											 
+
+#include <EGL/egl.h>    // EGL library
+#include <EGL/eglext.h> // EGL extensions
+
+static EGLDisplay s_display;
+static EGLContext s_context;
+static EGLSurface s_surface;
+
+static bool initEgl(void)
+{
+    // Connect to the EGL default display
+    s_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (!s_display)
+    {
+        //debugLog("Could not connect to display!"); //, eglGetError());
+        goto _fail0;
+    }
+
+    // Initialize the EGL display connection
+    eglInitialize(s_display, nullptr, nullptr);
+
+    // Select OpenGL (Core) as the desired graphics API
+    if (eglBindAPI(EGL_OPENGL_API) == EGL_FALSE)
+    {
+        //debugLog("Could not set API!"); //, eglGetError());
+        goto _fail1;
+    }
+
+    // Get an appropriate EGL framebuffer configuration
+    EGLConfig config;
+    EGLint numConfigs;
+    static const EGLint framebufferAttributeList[] =
+    {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+        EGL_RED_SIZE,     8,
+        EGL_GREEN_SIZE,   8,
+        EGL_BLUE_SIZE,    8,
+        EGL_ALPHA_SIZE,   8,
+        EGL_DEPTH_SIZE,   24,
+        EGL_STENCIL_SIZE, 8,
+        EGL_NONE
+    };
+    eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs);
+    if (numConfigs == 0)
+    {
+        //debugLog("No config found!"); //, eglGetError());
+        goto _fail1;
+    }
+
+    // Create an EGL window surface
+    s_surface = eglCreateWindowSurface(s_display, config, nwindowGetDefault(), nullptr);
+    if (!s_surface)
+    {
+        //debugLog("Surface creation failed!"); //, eglGetError());
+        goto _fail1;
+    }
+
+    // Create an EGL rendering context
+    static const EGLint contextAttributeList[] =
+    {
+        EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT_KHR,
+        EGL_CONTEXT_MAJOR_VERSION_KHR, 2,
+        EGL_CONTEXT_MINOR_VERSION_KHR, 1,
+        EGL_NONE
+    };
+    s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
+    if (!s_context)
+    {
+        //debugLog("Context creation failed!"); //, eglGetError());
+        goto _fail2;
+    }
+
+    // Connect the context to the surface
+    eglMakeCurrent(s_display, s_surface, s_surface, s_context);
+    return true;
+
+_fail2:
+    eglDestroySurface(s_display, s_surface);
+    s_surface = nullptr;
+_fail1:
+    eglTerminate(s_display);
+    s_display = nullptr;
+_fail0:
+    return false;
+}
+
+static void deinitEgl()
+{
+    if (s_display)
+    {
+        eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (s_context)
+        {
+            eglDestroyContext(s_display, s_context);
+            s_context = nullptr;
+        }
+        if (s_surface)
+        {
+            eglDestroySurface(s_display, s_surface);
+            s_surface = nullptr;
+        }
+        eglTerminate(s_display);
+        s_display = nullptr;
+    }
+}
+//!
+
 using std::min;
 using std::max;
 
@@ -118,15 +229,15 @@ void gr_set_mode_from_window_size()
 #elif SDL_MAJOR_VERSION == 2
 static void gr_set_mode_from_window_size(SDL_Window *const SDLWindow)
 {
-	assert(SDLWindow);
+	//!assert(SDLWindow);
 	int w, h;
-	SDL_GL_GetDrawableSize(SDLWindow, &w, &h);
+	w=1280; h=720; (void)SDLWindow;//!SDL_GL_GetDrawableSize(SDLWindow, &w, &h);
 	gr_set_mode(screen_mode(w, h));
 }
 
 void gr_set_mode_from_window_size()
 {
-	gr_set_mode_from_window_size(g_pRebirthSDLMainWindow);
+	gr_set_mode_from_window_size(NULL); //!gr_set_mode_from_window_size(g_pRebirthSDLMainWindow);
 }
 #endif
 
@@ -167,7 +278,7 @@ void ogl_swap_buffers_internal(void)
 #if SDL_MAJOR_VERSION == 1
 	SDL_GL_SwapBuffers();
 #elif SDL_MAJOR_VERSION == 2
-	SDL_GL_SwapWindow(g_pRebirthSDLMainWindow);
+	eglSwapBuffers(s_display, s_surface);//!SDL_GL_SwapWindow(g_pRebirthSDLMainWindow);
 #endif
 #endif
 	sync_helper.after_swap();
@@ -403,9 +514,9 @@ static int ogl_init_window(int w, int h)
 #endif
 	}
 #elif SDL_MAJOR_VERSION == 2
-	const auto SDLWindow = g_pRebirthSDLMainWindow;
-	if (!(SDL_GetWindowFlags(SDLWindow) & SDL_WINDOW_FULLSCREEN))
-		SDL_SetWindowSize(SDLWindow, w, h);
+	//!const auto SDLWindow = g_pRebirthSDLMainWindow;
+	//!if (!(SDL_GetWindowFlags(SDLWindow) & SDL_WINDOW_FULLSCREEN))
+	//!	SDL_SetWindowSize(SDLWindow, w, h);
 #endif
 
 #if DXX_USE_OGLES
@@ -503,7 +614,7 @@ int gr_check_fullscreen(void)
 #if SDL_MAJOR_VERSION == 1
 	return !!(sdl_video_flags & SDL_FULLSCREEN);
 #elif SDL_MAJOR_VERSION == 2
-	return !!(SDL_GetWindowFlags(g_pRebirthSDLMainWindow) & SDL_WINDOW_FULLSCREEN);
+	return 1; //! !!(SDL_GetWindowFlags(g_pRebirthSDLMainWindow) & SDL_WINDOW_FULLSCREEN);
 #endif
 }
 
@@ -555,7 +666,7 @@ void gr_toggle_fullscreen()
 	CGameCfg.WindowMode = !(local_sdl_video_flags & SDL_FULLSCREEN);
 #elif SDL_MAJOR_VERSION == 2
 	const auto SDLWindow = g_pRebirthSDLMainWindow;
-	const auto is_fullscreen_before_change = SDL_GetWindowFlags(SDLWindow) & SDL_WINDOW_FULLSCREEN;
+	const auto is_fullscreen_before_change = 1; //!SDL_GetWindowFlags(SDLWindow) & SDL_WINDOW_FULLSCREEN;
 	CGameCfg.WindowMode = !!is_fullscreen_before_change;
 	if (!is_fullscreen_before_change)
 		SDL_GetWindowPosition(SDLWindow, &g_iRebirthWindowX, &g_iRebirthWindowY);
@@ -773,19 +884,19 @@ static int ogl_init_load_library(void)
 void gr_set_attributes(void)
 {
 #if !DXX_USE_OGLES
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+	/*SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE,0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE,0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_GREEN_SIZE,0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE,0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE,0);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,1);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,1);*/ //!
 #if SDL_MAJOR_VERSION == 1
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, CGameCfg.VSync);
 #elif SDL_MAJOR_VERSION == 2
-	SDL_GL_SetSwapInterval(CGameCfg.VSync ? 1 : 0);
+	//!SDL_GL_SetSwapInterval(CGameCfg.VSync ? 1 : 0);
 #endif
-	int buffers, samples;
+	/*int buffers, samples;
 	if (CGameCfg.Multisample)
 	{
 		buffers = 1;
@@ -794,9 +905,9 @@ void gr_set_attributes(void)
 	else
 	{
 		buffers = samples = 0;
-	}
-	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, buffers);
-	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, samples);
+	}*/
+	//!SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, buffers);
+	//!SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, samples);
 #endif
 	ogl_smash_texture_list_internal();
 	gr_remap_color_fonts();
@@ -841,15 +952,22 @@ int gr_init()
 		sdl_window_flags |= SDL_WINDOW_BORDERLESS;
 	if (!CGameCfg.WindowMode && !CGameArg.SysWindow)
 		sdl_window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-	const auto mode = Game_screen_mode;
-	const auto SDLWindow = SDL_CreateWindow(DESCENT_VERSION, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SM_W(mode), SM_H(mode), sdl_window_flags);
-	if (!SDLWindow)
-		return -1;
-	SDL_GetWindowPosition(SDLWindow, &g_iRebirthWindowX, &g_iRebirthWindowY);
-	g_pRebirthSDLMainWindow = SDLWindow;
-	SDL_GL_CreateContext(SDLWindow);
-	if (const auto window_icon = SDL_LoadBMP(DXX_SDL_WINDOW_ICON_BITMAP))
-		SDL_SetWindowIcon(SDLWindow, window_icon);
+	//!const auto mode = Game_screen_mode;
+	//!const auto SDLWindow = SDL_CreateWindow(DESCENT_VERSION, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SM_W(mode), SM_H(mode), sdl_window_flags);
+	//!if (!SDLWindow)
+	//!	return -1;
+	//!SDL_GetWindowPosition(SDLWindow, &g_iRebirthWindowX, &g_iRebirthWindowY);
+	//!g_pRebirthSDLMainWindow = SDLWindow;
+	//!SDL_GL_CreateContext(SDLWindow);
+	//!if (const auto window_icon = SDL_LoadBMP(DXX_SDL_WINDOW_ICON_BITMAP))
+	//!	SDL_SetWindowIcon(SDLWindow, window_icon);
+	if (!initEgl())
+	{
+		SDL_Quit();
+		exit(0);
+	}
+	gladLoadGL();
+
 #endif
 
 	gr_set_attributes();
@@ -896,6 +1014,7 @@ void gr_close()
 		grd_curscreen.reset();
 	}
 	ogl_close_pixel_buffers();
+	deinitEgl(); //!
 #ifdef _WIN32
 	if (ogl_rt_loaded)
 		OpenGL_LoadLibrary(false, OglLibPath);
