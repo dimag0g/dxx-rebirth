@@ -8,7 +8,7 @@ If you're targeting Nintendo Switch, make sure you're using the `switch` branch.
 
 You will need to install the [devkitPro](https://devkitpro.org/) toolchain. Make sure to include the following packages:
 
-    libnx switch-sdl2_image switch-sdl2_mixer switch-mesa
+    libnx switch-sdl2_image switch-sdl2_mixer switch-mesa switch-physfs
 
 You'll need to build and install two additional libraries, [GLU](https://github.com/ptitSeb/GLU) and [GLAD](https://glad.dav1d.de/).
 For GLAD, I have used OpenGL 2.1 compatibility profile.
@@ -28,17 +28,17 @@ dxx-rebirth root directory is hardcoded as `/switch/d1x-rebirth` and `/switch/d2
 Put the release files there, then add the files from your copy of the game or the shareware files.
 The release already includes addons from  [dxx-rebirth](https://www.dxx-rebirth.com/addons/): the high resolution pack for D1 and OGG music for both D1 and D2.
 
-⚠ If you want to watch demos, copy the *.dem files into `DEMOS` folder inside `/switch/d1x-rebirth` and `/switch/d2x-rebirth`.
+If you want to watch demos, copy the `*.dem` files into `DEMOS` folder inside `/switch/d1x-rebirth` and `/switch/d2x-rebirth`.
 
-⚠ For Descent 2, skip `INTRO.MLV`: if you copy it, the game will keep playing the intro which is currently impossible to skip.
+⚠ For Descent 2, you may want to skip `INTRO.MLV`: if you copy it, the game will play the intro which is currently impossible to skip.
 
-Mods are supported in general, but I obviously didn't try all of them.
+Mods are supported in principle, but I obviously didn't try all of them.
 
 
 [3] RUNNING
 -----------
 
-This build of Aquaria was tested on 10.2.0|AMS 0.14.4|S (FAT32). exFAT is not recommended.
+This build of dxx-rebirth was tested on 10.2.0|AMS 0.14.4|S (FAT32). exFAT is not recommended.
 Alternative controllers (keyboards, mouses, etc.) might work but weren't tested.
 
 Both games run at solid 60fps with currently enabled effect (transparency and dynamic lighting).
@@ -61,9 +61,16 @@ Game controls can be changed in the game options. Default configuration mimics t
 - D-pad down - Convert energy to shield (D2 only)
 - D-pad left/right - Cycle primary/secondary weapon
 
+There are 3 pre-configured profiles (cockpit/hudbar/maxview) corresponing to the 3 HUD modes.
+Currently hotkey-triggered HUD options can only be changed using a keyboard on a PC version, or by manually editing the config files.
+
 [4] TODO
 --------
 
 Here's a list of known bugs / missing features, approximately in order of priority. Don't bother reporting those as issues.
 
-- none currently
+- cutscenes/briefings cannot be skipped
+- impossible to change HUD parameters accessible via hotkeys only
+- no network play
+- no gyro aim
+- no full HD resolution when docked
