@@ -60,8 +60,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <memory>
 #include <utility>
 
-static int wall_add_to_side(fvcvertptr &vcvertptr, wall_array &Walls, const vmsegptridx_t segp, unsigned side, unsigned type);
-
 //-------------------------------------------------------------------------
 // Variables for this module...
 //-------------------------------------------------------------------------
@@ -70,15 +68,12 @@ namespace {
 
 struct wall_dialog : UI_DIALOG
 {
-	explicit wall_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::unique_ptr<UI_GADGET_USERBOX> wallViewBox;
 	std::unique_ptr<UI_GADGET_BUTTON> quitButton, prev_wall, next_wall, blastable, door, illusory, closed_wall, goto_prev_wall, goto_next_wall, remove, bind_trigger, bind_control;
 	std::array<std::unique_ptr<UI_GADGET_CHECKBOX>, 3> doorFlag;
 	std::array<std::unique_ptr<UI_GADGET_RADIO>, 4> keyFlag;
-	int old_wall_num = -2;		// Set to some dummy value so everything works ok on the first frame.
+	wallnum_t old_wall_num = wall_none;		// Set to some dummy value so everything works ok on the first frame.
 	fix64 time;
 	int framenum = 0;
 	virtual window_event_result callback_handler(const d_event &) override;
@@ -108,6 +103,14 @@ static unsigned predicate_find_blastable_wall(const wclip &w)
 	return w.flags & WCF_BLASTABLE;
 }
 
+static wallnum_t allocate_wall(wall_array &Walls)
+{
+	using T = typename std::underlying_type<wallnum_t>::type;
+	const auto current_count = Walls.get_count();
+	const wallnum_t r{static_cast<T>(current_count)};
+	static_assert(MAX_WALLS <= std::numeric_limits<T>::max());
+	Walls.set_count(current_count + 1);
+	return r;
 }
 
 //---------------------------------------------------------------------
@@ -119,8 +122,7 @@ static int add_wall(fvcvertptr &vcvertptr, wall_array &Walls, const vmsegptridx_
 		shared_segment &sseg = seg;
 		auto &side0 = sseg.sides[side];
 		if (side0.wall_num == wall_none) {
- 			side0.wall_num = Walls.get_count();
-			Walls.set_count(Walls.get_count() + 1);
+ 			side0.wall_num = allocate_wall(Walls);
 			}
 				 
 		const auto &&csegp = seg.absolute_sibling(seg->children[side]);
@@ -129,8 +131,7 @@ static int add_wall(fvcvertptr &vcvertptr, wall_array &Walls, const vmsegptridx_
 		shared_segment &scseg = csegp;
 		auto &side1 = scseg.sides[Connectside];
 		if (side1.wall_num == wall_none) {
-			side1.wall_num = Walls.get_count();
-			Walls.set_count(Walls.get_count() + 1);
+ 			side1.wall_num = allocate_wall(Walls);
 			}
 		
 		const auto t1 = build_texture1_value(CurrentTexture);
@@ -189,6 +190,10 @@ static int wall_assign_door(int door_type)
 	return 1;
 }
 
+static int wall_add_to_side(fvcvertptr &vcvertptr, wall_array &Walls, const vmsegptridx_t segp, unsigned side, unsigned type);
+
+}
+
 int wall_add_blastable()
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
@@ -243,22 +248,23 @@ int wall_add_illusion()
 	return wall_add_to_side(vcvertptr, Walls, Cursegp, Curside, WALL_ILLUSION);
 }
 
-static int GotoPrevWall() {
-	wallnum_t current_wall;
+namespace {
 
+static int GotoPrevWall()
+{
 	shared_segment &sseg = Cursegp;
 	auto &side = sseg.sides[Curside];
 	auto &Walls = LevelUniqueWallSubsystemState.Walls;
 	auto &vcwallptr = Walls.vcptr;
-	if (side.wall_num == wall_none)
-		current_wall = Walls.get_count();
-	else
-		current_wall = side.wall_num;
-
-	current_wall--;
-	if (current_wall >= Walls.get_count()) current_wall = Walls.get_count()-1;
-
-	auto &w = *vcwallptr(current_wall);
+	const auto wall_count = Walls.get_count();
+	if (!wall_count)
+		/* No walls exist; nothing to do. */
+		return 0;
+	const auto current_wall = side.wall_num == wall_none
+		? wall_count
+		: static_cast<typename std::underlying_type<wallnum_t>::type>(side.wall_num);
+	const auto previous_wall = static_cast<wallnum_t>((current_wall ? current_wall : wall_count) - 1u);
+	auto &w = *vcwallptr(previous_wall);
 	if (w.segnum == segment_none)
 	{
 		return 0;
@@ -275,19 +281,22 @@ static int GotoPrevWall() {
 	return 1;
 }
 
-
 static int GotoNextWall() {
 	shared_segment &sseg = Cursegp;
 	auto &side = sseg.sides[Curside];
-	auto current_wall = side.wall_num; // It's ok to be -1 because it will immediately become 0
-
-	current_wall++;
-
 	auto &Walls = LevelUniqueWallSubsystemState.Walls;
 	auto &vcwallptr = Walls.vcptr;
-	if (current_wall >= Walls.get_count()) current_wall = 0;
 
-	auto &w = *vcwallptr(current_wall);
+	const auto wall_count = Walls.get_count();
+	if (!wall_count)
+		/* No walls exist; nothing to do. */
+		return 0;
+	const auto current_wall = side.wall_num; // It's ok to be -1 because it will immediately become 0
+	using T = typename std::underlying_type<wallnum_t>::type;
+	const wallnum_t next_wall = (current_wall == wall_none || static_cast<T>(current_wall) >= wall_count)
+		? wallnum_t{0}
+		: static_cast<wallnum_t>(static_cast<T>(current_wall) + 1u);
+	auto &w = *vcwallptr(next_wall);
 	if (w.segnum == segment_none)
 	{
 		return 0;
@@ -419,6 +428,7 @@ static int NextWall() {
 
 	Update_flags |= UF_WORLD_CHANGED;
 	return 1;
+}
 
 }
 
@@ -434,7 +444,7 @@ int do_wall_dialog()
 	close_all_windows();
 
 	// Open a window with a quit button
-	MainWindow = ui_create_dialog<wall_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
+	MainWindow = window_create<wall_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
 	return 1;
 }
 
@@ -519,10 +529,10 @@ window_event_result wall_dialog::callback_handler(const d_event &event)
 			ui_checkbox_check(doorFlag[1].get(), w->flags & WALL_DOOR_AUTO);
 			ui_checkbox_check(doorFlag[2].get(), w->flags & WALL_ILLUSION_OFF);
 
-			ui_radio_set_value(*keyFlag[0], w->keys & KEY_NONE);
-			ui_radio_set_value(*keyFlag[1], w->keys & KEY_BLUE);
-			ui_radio_set_value(*keyFlag[2], w->keys & KEY_RED);
-			ui_radio_set_value(*keyFlag[3], w->keys & KEY_GOLD);
+			ui_radio_set_value(*keyFlag[0], w->keys & wall_key::none);
+			ui_radio_set_value(*keyFlag[1], w->keys & wall_key::blue);
+			ui_radio_set_value(*keyFlag[2], w->keys & wall_key::red);
+			ui_radio_set_value(*keyFlag[3], w->keys & wall_key::gold);
 		}
 	}
 	
@@ -557,7 +567,7 @@ window_event_result wall_dialog::callback_handler(const d_event &event)
 		range_for (const int i, xrange(4u)) {
 			if (GADGET_PRESSED(keyFlag[i].get()))
 			{
-				w->keys = 1<<i;		// Set the ai_state to the cooresponding radio button
+				w->keys = static_cast<wall_key>(1 << i);
 				rval = window_event_result::handled;
 			}
 		}
@@ -635,7 +645,7 @@ window_event_result wall_dialog::callback_handler(const d_event &event)
 	if (event.type == EVENT_UI_DIALOG_DRAW)
 	{
 		if (w)	{
-			ui_dprintf_at( MainWindow, 12, 6, "Wall: %hi    ", static_cast<int16_t>(w));
+			ui_dprintf_at( MainWindow, 12, 6, "Wall: %hu    ", static_cast<typename std::underlying_type<wallnum_t>::type>(wallnum_t{w}));
 			switch (w->type) {
 				case WALL_NORMAL:
 					ui_dprintf_at( MainWindow, 12, 23, " Type: Normal   " );
@@ -758,8 +768,8 @@ int wall_remove_side(const vmsegptridx_t seg, short side)
 			if (linked_wall != wall_none)
 				vmwallptr(linked_wall)->linked_wall = wall_none;
 		}
+		const wallnum_t upper_wallnum = static_cast<wallnum_t>(static_cast<unsigned>(lower_wallnum) + 1u);
 		{
-			const wallnum_t upper_wallnum = lower_wallnum + 1;
 			const auto linked_wall = vcwallptr(upper_wallnum)->linked_wall;
 			if (linked_wall != wall_none)
 				vmwallptr(linked_wall)->linked_wall = wall_none;
@@ -767,8 +777,8 @@ int wall_remove_side(const vmsegptridx_t seg, short side)
 
 		{
 			const auto num_walls = Walls.get_count();
-			auto &&sr = partial_const_range(Walls, static_cast<wallnum_t>(lower_wallnum + 2), num_walls);
-			std::move(sr.begin(), sr.end(), partial_range(Walls, lower_wallnum, num_walls - 2).begin());
+			auto &&sr = partial_const_range(Walls, static_cast<unsigned>(lower_wallnum) + 2, num_walls);
+			std::move(sr.begin(), sr.end(), partial_range(Walls, static_cast<unsigned>(lower_wallnum), num_walls - 2).begin());
 			Walls.set_count(num_walls - 2);
 		}
 
@@ -776,8 +786,8 @@ int wall_remove_side(const vmsegptridx_t seg, short side)
 		{
 			if (segp->segnum != segment_none)
 				range_for (auto &w, segp->shared_segment::sides)
-					if (w.wall_num != wall_none && w.wall_num > lower_wallnum+1)
-						w.wall_num -= 2;
+					if (w.wall_num != wall_none && w.wall_num > upper_wallnum)
+						w.wall_num = static_cast<wallnum_t>(static_cast<unsigned>(w.wall_num) - 2u);
 		}
 
 		// Destroy any links to the deleted wall.
@@ -824,6 +834,8 @@ int wall_remove()
 	return wall_remove_side(Cursegp, Curside);
 }
 
+namespace {
+
 //---------------------------------------------------------------------
 // Add a wall to curside
 static int wall_add_to_side(fvcvertptr &vcvertptr, wall_array &Walls, const vmsegptridx_t segp, const unsigned side, const unsigned type)
@@ -850,8 +862,8 @@ static int wall_add_to_side(fvcvertptr &vcvertptr, wall_array &Walls, const vmse
 		w0.clip_num = -1;
 		w1.clip_num = -1;
 
-		w0.keys = KEY_NONE;
-		w1.keys = KEY_NONE;
+		w0.keys = wall_key::none;
+		w1.keys = wall_key::none;
 
 		if (type == WALL_BLASTABLE) {
 	  		w0.hps = WALL_HPS;
@@ -883,6 +895,7 @@ static int wall_add_to_side(fvcvertptr &vcvertptr, wall_array &Walls, const vmse
 	}
 }
 
+}
 
 //---------------------------------------------------------------------
 // Add a wall to markedside
@@ -916,8 +929,8 @@ int wall_add_to_markedside(fvcvertptr &vcvertptr, wall_array &Walls, const int8_
 		w0.clip_num = -1;
 		w1.clip_num = -1;
 
-		w0.keys = KEY_NONE;
-		w1.keys = KEY_NONE;
+		w0.keys = wall_key::none;
+		w1.keys = wall_key::none;
 
 		if (type == WALL_BLASTABLE) {
 	  		w0.hps = WALL_HPS;
@@ -1130,6 +1143,8 @@ int delete_all_walls()
 	return 0;
 }
 
+namespace {
+
 // ------------------------------------------------------------------------------------------------
 static void copy_old_wall_data_to_new(wallnum_t owall, wallnum_t nwall)
 {
@@ -1151,6 +1166,8 @@ static void copy_old_wall_data_to_new(wallnum_t owall, wallnum_t nwall)
 	}
 }
 
+}
+
 // ------------------------------------------------------------------------------------------------
 void copy_group_walls(int old_group, int new_group)
 {
@@ -1165,9 +1182,10 @@ void copy_group_walls(int old_group, int new_group)
 		auto &ns = vmsegptr(new_seg)->shared_segment::sides;
 		for (int j=0; j<MAX_SIDES_PER_SEGMENT; j++) {
 			if (os[j].wall_num != wall_none) {
-				ns[j].wall_num = Walls.get_count();
-				copy_old_wall_data_to_new(os[j].wall_num, Walls.get_count());
-				auto &w = *vmwallptr(static_cast<wallnum_t>(Walls.get_count()));
+				const auto nw = static_cast<wallnum_t>(Walls.get_count());
+				ns[j].wall_num = nw;
+				copy_old_wall_data_to_new(os[j].wall_num, nw);
+				auto &w = *vmwallptr(nw);
 				w.segnum = new_seg;
 				w.sidenum = j;
 				Walls.set_count(Walls.get_count() + 1);
@@ -1210,7 +1228,7 @@ void check_wall_validity(void)
 		}
 	}
 
-	std::array<bool, MAX_WALLS> wall_flags{};
+	enumerated_array<bool, MAX_WALLS, wallnum_t> wall_flags{};
 
 	range_for (const auto &&segp, vmsegptridx)
 	{

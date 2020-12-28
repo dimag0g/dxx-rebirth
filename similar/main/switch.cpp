@@ -46,7 +46,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "player.h"
 #include "endlevel.h"
 #include "gameseq.h"
-#include "multi.h"
+#include "net_udp.h"
 #include "palette.h"
 #include "hudmsg.h"
 #include "robot.h"
@@ -141,7 +141,7 @@ static void do_unlock_doors(fvcsegptr &vcsegptr, fvmwallptr &vmwallptr, const tr
 		const auto wall_num = segp.sides[sidenum].wall_num;
 		auto &w = *vmwallptr(wall_num);
 		w.flags &= ~WALL_DOOR_LOCKED;
-		w.keys = KEY_NONE;
+		w.keys = wall_key::none;
 	};
 	trigger_wall_op(t, vcsegptr, op);
 }
@@ -341,7 +341,7 @@ window_event_result check_trigger_sub(object &plrobj, const trgnum_t trigger_num
 			if (Game_mode & GM_MULTI)
 				multi_send_endlevel_start(multi_endlevel_type::secret);
 			if (Game_mode & GM_NETWORK)
-				multi_do_protocol_frame(1, 1);
+				multi::dispatch->do_protocol_frame(1, 1);
 			result = std::max(PlayerFinishedLevel(1), result);		//1 means go to secret level
 			LevelUniqueControlCenterState.Control_center_destroyed = 0;
 			return std::max(result, window_event_result::handled);
@@ -404,7 +404,7 @@ window_event_result check_trigger_sub(object &plrobj, const trgnum_t trigger_num
 				return std::max(result, window_event_result::handled);
 			} else {
 #if DXX_USE_EDITOR
-					nm_messagebox_str( "Yo!", "You have hit the exit trigger!", "" );
+					nm_messagebox_str(menu_title{"Yo!"}, "You have hit the exit trigger!", menu_subtitle{""});
 				#else
 					Int3();		//level num == 0, but no editor!
 				#endif
@@ -742,7 +742,6 @@ ASSERT_SERIAL_UDT_MESSAGE_SIZE(trigger, 54);
 DEFINE_SERIAL_UDT_TO_MESSAGE(trigger, t, (t.type, t.flags, t.num_links, serial::pad<1>(), t.value, serial::pad<4>(), t.seg, t.side));
 ASSERT_SERIAL_UDT_MESSAGE_SIZE(trigger, 52);
 #endif
-}
 
 /*
  * reads n trigger structs from a PHYSFS_File and swaps if specified
@@ -757,7 +756,6 @@ void trigger_write(PHYSFS_File *fp, const trigger &t)
 	PHYSFSX_serialize_write(fp, t);
 }
 
-namespace dsx {
 void v29_trigger_write(PHYSFS_File *fp, const trigger &rt)
 {
 	const trigger *t = &rt;

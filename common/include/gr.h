@@ -153,11 +153,11 @@ public:
 	struct {
 		uint16_t width, height;
 	};
-	bool operator==(const screen_mode &rhs)
+	bool operator==(const screen_mode &rhs) const
 	{
 		return wh == rhs.wh;
 	}
-	bool operator!=(const screen_mode &rhs)
+	bool operator!=(const screen_mode &rhs) const
 	{
 		return !(*this == rhs);
 	}
@@ -334,12 +334,6 @@ struct font_delete
 		gr_close_font(std::unique_ptr<grs_font>(p));
 	}
 };
-}
-
-// Writes a string using current font. Returns the next column after last char.
-static inline void gr_set_curfont(grs_canvas &canvas, const grs_font_ptr &p)
-{
-	gr_set_curfont(canvas, p.get());
 }
 
 static inline void (gr_set_current_canvas)(grs_canvas_ptr &canv DXX_DEBUG_CURRENT_CANVAS_FILE_LINE_COMMA_L_DECL_VARS)

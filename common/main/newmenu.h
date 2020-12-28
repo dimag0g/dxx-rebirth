@@ -27,7 +27,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "fwd-event.h"
 
-#ifdef __cplusplus
 #include <cstdint>
 #include <algorithm>
 #include <memory>
@@ -35,27 +34,30 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include "fwd-window.h"
 #include "varutil.h"
 #include "dxxsconf.h"
 #include "dsx-ns.h"
 #include "fmtcheck.h"
 #include "ntstring.h"
 #include "partial_range.h"
+#ifdef dsx
+#include "gamefont.h"
+#include "window.h"
 
-struct newmenu;
+namespace dcx {
+
 struct listbox;
 
-enum nm_type : uint8_t
+enum class nm_type : uint8_t
 {
-	NM_TYPE_MENU = 0,   // A menu item... when enter is hit on this, newmenu_do returns this item number
-	NM_TYPE_INPUT = 1,   // An input box... fills the text field in, and you need to fill in text_len field.
-	NM_TYPE_CHECK = 2,   // A check box. Set and get its status by looking at flags field (1=on, 0=off)
-	NM_TYPE_RADIO = 3,   // Same as check box, but only 1 in a group can be set at a time. Set group fields.
-	NM_TYPE_TEXT = 4,   // A line of text that does nothing.
-	NM_TYPE_NUMBER = 5,   // A numeric entry counter.  Changes value from min_value to max_value;
-	NM_TYPE_INPUT_MENU = 6,   // A inputbox that you hit Enter to edit, when done, hit enter and menu leaves.
-	NM_TYPE_SLIDER = 7,   // A slider from min_value to max_value. Draws with text_len chars.
+	menu = 0,   // A menu item... when enter is hit on this, newmenu_do returns this item number
+	input = 1,   // An input box... fills the text field in, and you need to fill in text_len field.
+	check = 2,   // A check box. Set and get its status by looking at flags field (1=on, 0=off)
+	radio = 3,   // Same as check box, but only 1 in a group can be set at a time. Set group fields.
+	text = 4,   // A line of text that does nothing.
+	number = 5,   // A numeric entry counter.  Changes value from min_value to max_value;
+	input_menu = 6,   // A inputbox that you hit Enter to edit, when done, hit enter and menu leaves.
+	slider = 7,   // A slider from min_value to max_value. Draws with text_len chars.
 };
 
 #define NM_MAX_TEXT_LEN     255
@@ -64,6 +66,7 @@ class newmenu_item
 {
 	struct input_common_type
 	{
+		const char *allowed_chars;
 		int text_len;
 		/* Only used by imenu, but placing it in imenu_specific_type
 		 * makes newmenu_item non-POD.  Some users expect newmenu_item
@@ -74,11 +77,11 @@ class newmenu_item
 	};
 	struct input_specific_type : input_common_type
 	{
-		static constexpr std::integral_constant<unsigned, NM_TYPE_INPUT> nm_type{};
+		static constexpr std::integral_constant<nm_type, nm_type::input> static_type{};
 	};
 	struct radio_specific_type
 	{
-		static constexpr std::integral_constant<unsigned, NM_TYPE_RADIO> nm_type{};
+		static constexpr std::integral_constant<nm_type, nm_type::radio> static_type{};
 		int group;          // What group this belongs to for radio buttons.
 	};
 	struct number_slider_common_type
@@ -88,38 +91,41 @@ class newmenu_item
 	};
 	struct number_specific_type : number_slider_common_type
 	{
-		static constexpr std::integral_constant<unsigned, NM_TYPE_NUMBER> nm_type{};
+		static constexpr std::integral_constant<nm_type, nm_type::number> static_type{};
 	};
 	struct imenu_specific_type : input_common_type
 	{
-		static constexpr std::integral_constant<unsigned, NM_TYPE_INPUT_MENU> nm_type{};
+		static constexpr std::integral_constant<nm_type, nm_type::input_menu> static_type{};
+		ntstring<NM_MAX_TEXT_LEN> saved_text;
 	};
 	struct slider_specific_type : number_slider_common_type
 	{
-		static constexpr std::integral_constant<unsigned, NM_TYPE_SLIDER> nm_type{};
+		static constexpr std::integral_constant<nm_type, nm_type::slider> static_type{};
+		ntstring<NM_MAX_TEXT_LEN> saved_text;
 	};
-	template <typename T, unsigned expected_type = T::nm_type>
-		T &get_union_member(T &v)
-		{
+	static void check_union_type(const nm_type current_type, const nm_type static_type)
+	{
 #ifdef DXX_CONSTANT_TRUE
-			if (DXX_CONSTANT_TRUE(type != expected_type))
-				DXX_ALWAYS_ERROR_FUNCTION(dxx_newmenu_trap_invalid_type, "invalid type access");
+		if (DXX_CONSTANT_TRUE(current_type != static_type))
+			DXX_ALWAYS_ERROR_FUNCTION(dxx_newmenu_trap_invalid_type, "invalid type access");
 #endif
-			if (type != expected_type)
-				throw std::runtime_error("invalid type access");
+		if (current_type != static_type)
+			throw std::runtime_error("invalid type access");
+	}
+	template <typename T, nm_type static_type = T::static_type>
+		T &get_union_member(T &v) const
+		{
+			check_union_type(type, static_type);
 			return v;
 		}
 public:
 	int     value;          // For checkboxes and radio buttons, this is 1 if marked initially, else 0
-	union {
-		input_specific_type nm_private_input;
-		radio_specific_type nm_private_radio;
-		number_specific_type nm_private_number;
-		imenu_specific_type nm_private_imenu;
-		slider_specific_type nm_private_slider;
-	};
 	input_specific_type &input() {
 		return get_union_member(nm_private_input);
+	}
+	const radio_specific_type &radio() const
+	{
+		return get_union_member(nm_private_radio);
 	}
 	radio_specific_type &radio() {
 		return get_union_member(nm_private_radio);
@@ -134,12 +140,12 @@ public:
 		return get_union_member(nm_private_slider);
 	}
 	number_slider_common_type *number_or_slider() {
-		return (type == nm_private_number.nm_type || type == nm_private_slider.nm_type)
+		return (type == nm_private_number.static_type || type == nm_private_slider.static_type)
 			? &nm_private_number
 			: nullptr;
 	}
 	input_common_type *input_or_menu() {
-		return (type == nm_private_input.nm_type || type == nm_private_imenu.nm_type)
+		return (type == nm_private_input.static_type || type == nm_private_imenu.static_type)
 			? &nm_private_input
 			: nullptr;
 	}
@@ -149,12 +155,188 @@ public:
 	short   w, h;
 	short   right_offset;
 	nm_type type;           // What kind of item this is, see NM_TYPE_????? defines
-	ntstring<NM_MAX_TEXT_LEN> saved_text;
+	union {
+		input_specific_type nm_private_input;
+		radio_specific_type nm_private_radio;
+		number_specific_type nm_private_number;
+		imenu_specific_type nm_private_imenu;
+		slider_specific_type nm_private_slider;
+	};
 };
 
-namespace dcx {
+enum class tab_processing_flag : uint8_t
+{
+	ignore,
+	process,
+};
 
-extern const char *Newmenu_allowed_chars;
+enum class tiny_mode_flag : uint8_t
+{
+	normal,
+	tiny,
+};
+
+enum class draw_box_flag : uint8_t
+{
+	none,
+	menu_background,
+};
+
+template <typename>
+struct menu_tagged_string
+{
+	const char *const p;
+	operator const char *() const
+	{
+		return p;
+	}
+};
+
+struct menu_title_tag;
+struct menu_subtitle_tag;
+struct menu_filename_tag;
+using menu_title = menu_tagged_string<menu_title_tag>;
+using menu_subtitle = menu_tagged_string<menu_subtitle_tag>;
+using menu_filename = menu_tagged_string<menu_filename_tag>;
+
+struct newmenu_layout
+{
+	struct adjusted_citem
+	{
+		const partial_range_t<newmenu_item *> items;
+		const int citem;
+		const uint8_t all_text;
+		static adjusted_citem create(partial_range_t<newmenu_item *> items, int citem);
+	};
+	int             x,y,w,h;
+	short			swidth, sheight;
+	// with these we check if resolution or fonts have changed so menu structure can be recreated
+	font_x_scale_proportion fntscalex;
+	font_y_scale_proportion fntscaley;
+	int				citem;
+	const menu_title title;
+	const menu_subtitle subtitle;
+	const menu_filename filename;
+	const tiny_mode_flag tiny_mode;
+	const tab_processing_flag tabs_flag;
+	const uint8_t max_on_menu;
+	const uint8_t all_text;		//set true if all text items
+	const uint8_t is_scroll_box;   // Is this a scrolling box? Set to false at init
+	const uint8_t max_displayable;
+	const draw_box_flag draw_box;
+	uint8_t mouse_state;
+	const partial_range_t<newmenu_item *> items;
+	int	scroll_offset = 0;
+	newmenu_layout(const menu_title title, const menu_subtitle subtitle, const menu_filename filename, const tiny_mode_flag tiny_mode, const tab_processing_flag tabs_flag, const adjusted_citem citem_init, const draw_box_flag draw_box) :
+		citem(citem_init.citem),
+		title(title), subtitle(subtitle), filename(filename),
+		tiny_mode(tiny_mode), tabs_flag(tabs_flag),
+		max_on_menu(std::min<uint8_t>(citem_init.items.size(), tiny_mode != tiny_mode_flag::normal ? 21u : 14u)),
+		all_text(citem_init.all_text),
+		is_scroll_box(max_on_menu < citem_init.items.size()),
+		max_displayable(std::min<uint8_t>(max_on_menu, citem_init.items.size())),
+		draw_box(draw_box),
+		items(citem_init.items)
+	{
+		create_structure();
+	}
+	newmenu_layout(newmenu_layout &&) = default;
+	/* gcc can implement this as requested.  clang implicitly deletes
+	 * the move-assignment operator= due to the presence of
+	 * const-qualified member variables.
+	 */
+	newmenu_layout &operator=(newmenu_layout &&) = delete;
+	void create_structure();
+};
+
+struct newmenu : newmenu_layout, window
+{
+	using subfunction_type = int(*)(newmenu *menu, const d_event &event, void *userdata);
+	newmenu(const menu_title title, const menu_subtitle subtitle, const menu_filename filename, const tiny_mode_flag tiny_mode, const tab_processing_flag tabs_flag, const adjusted_citem citem_init, grs_canvas &src, const draw_box_flag draw_box = draw_box_flag::menu_background) :
+		newmenu_layout(title, subtitle, filename, tiny_mode, tabs_flag, citem_init, draw_box), window(src, x, y, w, h)
+	{
+	}
+	int *rval = nullptr;			// Pointer to return value (for polling newmenus)
+	virtual window_event_result event_handler(const d_event &) override;
+	virtual int subfunction_handler(const d_event &event) = 0;
+	static int process_until_closed(newmenu *);
+};
+
+template <typename T1, typename... ConstructionArgs>
+int run_blocking_newmenu(ConstructionArgs &&... args)
+{
+	return T1::process_until_closed(window_create<T1>(std::forward<ConstructionArgs>(args)...));
+}
+
+struct passive_newmenu : newmenu
+{
+	using newmenu::newmenu;
+	/* Ignores all calls. */
+	virtual int subfunction_handler(const d_event &event) final override;
+};
+
+struct reorder_newmenu : newmenu
+{
+	using newmenu::newmenu;
+	void event_key_command(const d_event &event);
+	/* subfunction_handler is not overridden here, because users of
+	 * reorder_newmenu will need to handle more than just the key event,
+	 * so requiring them to have a handler for the key event produces
+	 * better code than having them call back to
+	 * reorder_newmenu::subfunction_handler just for that event.
+	 */
+};
+
+struct listbox_layout
+{
+	struct marquee
+	{
+		class deleter : std::default_delete<fix64[]>
+		{
+		public:
+			void operator()(marquee *const m) const
+			{
+				static_assert(std::is_trivially_destructible<marquee>::value, "marquee destructor not called");
+				std::default_delete<fix64[]>::operator()(reinterpret_cast<fix64 *>(m));
+			}
+		};
+		using ptr = std::unique_ptr<marquee, deleter>;
+		static ptr allocate(const unsigned maxchars)
+		{
+			const unsigned max_bytes = maxchars + 1 + sizeof(marquee);
+			auto pf = std::make_unique<fix64[]>(1 + (max_bytes / sizeof(fix64)));
+			auto pm = ptr(new(pf.get()) marquee(maxchars));
+			pf.release();
+			return pm;
+		}
+		marquee(const unsigned mc) :
+			maxchars(mc)
+		{
+		}
+		fix64 lasttime; // to scroll text if string does not fit in box
+		const unsigned maxchars;
+		int pos = 0, scrollback = 0;
+		char text[0];	/* must be last */
+	};
+	listbox_layout(int citem, unsigned nitems, const char **item, menu_title title) :
+		citem(citem), nitems(nitems), item(item), title(title)
+	{
+		create_structure();
+	}
+	void create_structure();
+	unsigned items_on_screen;
+	int box_x, box_y;
+	int box_w, height, title_height;
+	int citem, first_item;
+	unsigned nitems;
+	const char **const item;
+	const menu_title title;
+	marquee::ptr marquee;
+	short swidth, sheight;
+	// with these we check if resolution or fonts have changed so listbox structure can be recreated
+	font_x_scale_proportion fntscalex;
+	font_y_scale_proportion fntscaley;
+};
 
 template <typename T>
 using newmenu_subfunction_t = int(*)(newmenu *menu,const d_event &event, T *userdata);
@@ -167,23 +349,7 @@ constexpr const unused_newmenu_userdata_t *unused_newmenu_userdata = nullptr;
 //should be called whenever the palette changes
 void newmenu_free_background();
 
-#ifdef dsx
-enum class tab_processing_flag : uint8_t
-{
-	ignore,
-	process,
-};
-
-enum class tiny_mode_flag : uint8_t
-{
-	normal,
-	tiny,
-};
-#endif
-
-}
-
-int newmenu_do2(const char *title, const char *subtitle, partial_range_t<newmenu_item *> items, newmenu_subfunction subfunction, void *userdata, int citem, const char *filename);
+int newmenu_do2(menu_title title, menu_subtitle subtitle, partial_range_t<newmenu_item *> items, newmenu_subfunction subfunction, void *userdata, int citem, menu_filename filename);
 
 // Pass an array of newmenu_items and it processes the menu. It will
 // return a -1 if Esc is pressed, otherwise, it returns the index of
@@ -195,68 +361,35 @@ int newmenu_do2(const char *title, const char *subtitle, partial_range_t<newmenu
 // either/both of these if you don't want them.
 // Same as above, only you can pass through what background bitmap to use.
 template <typename T>
-int newmenu_do2(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<T> subfunction, T *const userdata, const int citem, const char *const filename)
+int newmenu_do2(const menu_title title, const menu_subtitle subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<T> subfunction, T *const userdata, const int citem = 0, const menu_filename filename = {})
 {
 	return newmenu_do2(title, subtitle, std::move(items), reinterpret_cast<newmenu_subfunction>(subfunction), static_cast<void *>(userdata), citem, filename);
 }
 
 template <typename T>
-int newmenu_do2(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<const T> subfunction, const T *const userdata, const int citem, const char *const filename)
+int newmenu_do2(const menu_title title, const menu_subtitle subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<const T> subfunction, const T *const userdata, const int citem = 0, const menu_filename filename = {})
 {
 	return newmenu_do2(title, subtitle, std::move(items), reinterpret_cast<newmenu_subfunction>(subfunction), static_cast<void *>(const_cast<T *>(userdata)), citem, filename);
 }
 
-template <typename T>
-static inline int newmenu_do(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<T> subfunction, T *const userdata)
+enum class mission_filter_mode
 {
-	return newmenu_do2(title, subtitle, std::move(items), subfunction, userdata, 0, nullptr);
+	exclude_anarchy,
+	include_anarchy,
+};
+
 }
 
-// Same as above, only you can pass through what item is initially selected.
-template <typename T>
-static inline int newmenu_do1(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<T> subfunction, T *const userdata, const int citem)
-{
-	return newmenu_do2(title, subtitle, std::move(items), subfunction, userdata, citem, nullptr);
-}
-
-#ifdef dsx
 namespace dsx {
-newmenu *newmenu_do4(const char * title, const char * subtitle, partial_range_t<newmenu_item *> items, newmenu_subfunction subfunction, void *userdata, int citem, const char * filename, tiny_mode_flag TinyMode, tab_processing_flag TabsFlag);
 
-static inline newmenu *newmenu_do3(const char * title, const char * subtitle, partial_range_t<newmenu_item *> items, newmenu_subfunction subfunction, void *userdata, int citem, const char * filename)
-{
-	return newmenu_do4(title, subtitle, std::move(items), subfunction, userdata, citem, filename, tiny_mode_flag::normal, tab_processing_flag::ignore);
+//Handles creating and selecting from the mission list.
+//Returns 1 if a mission was loaded.
+int select_mission (mission_filter_mode anarchy_mode, menu_title message, window_event_result (*when_selected)(void));
+
 }
 
-// Same as above, but returns menu instead of citem
-template <typename T>
-static newmenu *newmenu_do3(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<T> subfunction, T *const userdata, const int citem, const char *const filename)
-{
-	return newmenu_do3(title, subtitle, std::move(items), reinterpret_cast<newmenu_subfunction>(subfunction), static_cast<void *>(userdata), citem, filename);
-}
-
-template <typename T>
-static newmenu *newmenu_do3(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const newmenu_subfunction_t<const T> subfunction, const T *const userdata, const int citem, const char *const filename)
-{
-	return newmenu_do3(title, subtitle, std::move(items), reinterpret_cast<newmenu_subfunction>(subfunction), static_cast<void *>(const_cast<T *>(userdata)), citem, filename);
-}
-
-static inline newmenu *newmenu_dotiny(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const tab_processing_flag TabsFlag, const newmenu_subfunction subfunction, void *const userdata)
-{
-	return newmenu_do4(title, subtitle, std::move(items), subfunction, userdata, 0, nullptr, tiny_mode_flag::tiny, TabsFlag);
-}
-
-// Tiny menu with GAME_FONT
-template <typename T>
-static newmenu *newmenu_dotiny(const char *const title, const char *const subtitle, partial_range_t<newmenu_item *> items, const tab_processing_flag TabsFlag, const newmenu_subfunction_t<T> subfunction, T *const userdata)
-{
-	return newmenu_dotiny(title, subtitle, std::move(items), TabsFlag, reinterpret_cast<newmenu_subfunction>(subfunction), static_cast<void *>(userdata));
-}
-}
-#endif
-
-// Basically the same as do2 but sets reorderitems flag for weapon priority menu a bit redundant to get lose of a global variable but oh well...
-void newmenu_doreorder(const char * title, const char * subtitle, partial_range_t<newmenu_item *> items);
+newmenu_item *newmenu_get_items(newmenu *menu);
+int newmenu_get_citem(newmenu *menu);
 
 // Sample Code:
 /*
@@ -295,13 +428,10 @@ void newmenu_doreorder(const char * title, const char * subtitle, partial_range_
 
 typedef cstring_tie<5> nm_messagebox_tie;
 
-int nm_messagebox_str(const char *title, const nm_messagebox_tie &tie, const char *str) __attribute_nonnull((3));
-int vnm_messagebox_aN(const char *title, const nm_messagebox_tie &tie, const char *format, ...) __attribute_format_printf(3, 4);
+int nm_messagebox_str(menu_title title, const nm_messagebox_tie &tie, menu_subtitle str);
+int vnm_messagebox_aN(menu_title title, const nm_messagebox_tie &tie, const char *format, ...) __attribute_format_printf(3, 4);
 
-newmenu_item *newmenu_get_items(newmenu *menu);
-int newmenu_get_citem(newmenu *menu);
 void nm_draw_background(grs_canvas &, int x1, int y1, int x2, int y2);
-void nm_restore_background(int x, int y, int w, int h);
 
 // Example listbox callback function...
 // int lb_callback( int * citem, int *nitems, char * items[], int *keypress )
@@ -324,45 +454,26 @@ void nm_restore_background(int x, int y, int w, int h);
 // 	return 0;
 // }
 
-window *listbox_get_window(listbox &lb);
+namespace dcx {
+
+struct listbox : listbox_layout, window
+{
+	listbox(int citem, unsigned nitems, const char **item, menu_title title, grs_canvas &canvas, uint8_t allow_abort_flag);
+	const uint8_t allow_abort_flag;
+	uint8_t mouse_state = 0;
+	marquee::ptr marquee;
+	virtual window_event_result event_handler(const d_event &) override;
+	virtual window_event_result callback_handler(const d_event &, window_event_result default_return_value) = 0;
+};
+
 const char **listbox_get_items(listbox &lb);
 int listbox_get_citem(listbox &lb);
 void listbox_delete_item(listbox &lb, int item);
-
-namespace dcx {
-template <typename T>
-using listbox_subfunction_t = window_event_result (*)(listbox *menu,const d_event &event, T *userdata);
-
-class unused_listbox_userdata_t;
-constexpr listbox_subfunction_t<const unused_listbox_userdata_t> *unused_listbox_subfunction = nullptr;
-constexpr const unused_listbox_userdata_t *unused_listbox_userdata = nullptr;
-}
-
-listbox *newmenu_listbox1(const char * title, uint_fast32_t nitems, const char *items[], uint8_t allow_abort_flag, int default_item, listbox_subfunction_t<void> listbox_callback, void *userdata);
-
-template <typename T>
-listbox *newmenu_listbox1(const char *const title, const uint_fast32_t nitems, const char *items[], const uint8_t allow_abort_flag, const int default_item, const listbox_subfunction_t<T> listbox_callback, T *const userdata)
-{
-	return newmenu_listbox1(title, nitems, items, allow_abort_flag, default_item, reinterpret_cast<listbox_subfunction_t<void>>(listbox_callback), static_cast<void *>(userdata));
-}
-
-template <typename T>
-listbox *newmenu_listbox1(const char *const title, const uint_fast32_t nitems, const char *items[], const uint8_t allow_abort_flag, const int default_item, const listbox_subfunction_t<T> listbox_callback, std::unique_ptr<T> userdata)
-{
-	auto r = newmenu_listbox1(title, nitems, items, allow_abort_flag, default_item, reinterpret_cast<listbox_subfunction_t<void>>(listbox_callback), static_cast<void *>(userdata.get()));
-	userdata.release();
-	return r;
-}
-
-template <typename T>
-listbox *newmenu_listbox(const char *const title, const uint_fast32_t nitems, const char *items[], const uint8_t allow_abort_flag, const listbox_subfunction_t<T> listbox_callback, T *const userdata)
-{
-	return newmenu_listbox1(title, nitems, items, allow_abort_flag, 0, reinterpret_cast<listbox_subfunction_t<void>>(listbox_callback), static_cast<void *>(userdata));
 }
 
 static inline void nm_set_item_menu(newmenu_item &ni, const char *text)
 {
-	ni.type = NM_TYPE_MENU;
+	ni.type = nm_type::menu;
 	ni.text = const_cast<char *>(text);
 }
 
@@ -375,23 +486,25 @@ static inline newmenu_item nm_item_menu(const char *text)
 }
 
 __attribute_nonnull()
-static inline void nm_set_item_input(newmenu_item &ni, unsigned len, char *text)
+static inline void nm_set_item_input(newmenu_item &ni, unsigned len, char *text, const char *const allowed_chars)
 {
-	ni.type = NM_TYPE_INPUT;
+	ni.type = nm_type::input;
 	ni.text = text;
-	ni.input().text_len = len - 1;
+	auto &i = ni.input();
+	i.text_len = len - 1;
+	i.allowed_chars = allowed_chars;
 }
 
 template <std::size_t len>
-static inline void nm_set_item_input(newmenu_item &ni, char (&text)[len])
+static inline void nm_set_item_input(newmenu_item &ni, char (&text)[len], const char *const allowed_chars = nullptr)
 {
-	nm_set_item_input(ni, len, text);
+	nm_set_item_input(ni, len, text, allowed_chars);
 }
 
 template <std::size_t len>
-static inline void nm_set_item_input(newmenu_item &ni, std::array<char, len> &text)
+static inline void nm_set_item_input(newmenu_item &ni, std::array<char, len> &text, const char *const allowed_chars = nullptr)
 {
-	nm_set_item_input(ni, len, text.data());
+	nm_set_item_input(ni, len, text.data(), allowed_chars);
 }
 
 template <typename... T>
@@ -405,7 +518,7 @@ static inline newmenu_item nm_item_input(T &&... t)
 __attribute_nonnull()
 static inline void nm_set_item_checkbox(newmenu_item &ni, const char *text, unsigned checked)
 {
-	ni.type = NM_TYPE_CHECK;
+	ni.type = nm_type::check;
 	ni.text = const_cast<char *>(text);
 	ni.value = checked;
 }
@@ -413,7 +526,7 @@ static inline void nm_set_item_checkbox(newmenu_item &ni, const char *text, unsi
 __attribute_nonnull()
 static inline void nm_set_item_text(newmenu_item &ni, const char *text)
 {
-	ni.type = NM_TYPE_TEXT;
+	ni.type = nm_type::text;
 	ni.text = const_cast<char *>(text);
 }
 
@@ -428,7 +541,7 @@ static inline newmenu_item nm_item_text(const char *text)
 __attribute_nonnull()
 static inline void nm_set_item_radio(newmenu_item &ni, const char *text, unsigned checked, unsigned grp)
 {
-	ni.type = NM_TYPE_RADIO;
+	ni.type = nm_type::radio;
 	ni.text = const_cast<char *>(text);
 	ni.value = checked;
 	auto &radio = ni.radio();
@@ -438,7 +551,7 @@ static inline void nm_set_item_radio(newmenu_item &ni, const char *text, unsigne
 __attribute_nonnull()
 static inline void nm_set_item_number(newmenu_item &ni, const char *text, unsigned now, unsigned low, unsigned high)
 {
-	ni.type = NM_TYPE_NUMBER;
+	ni.type = nm_type::number;
 	ni.text = const_cast<char *>(text);
 	ni.value = now;
 	auto &number = ni.number();
@@ -449,13 +562,31 @@ static inline void nm_set_item_number(newmenu_item &ni, const char *text, unsign
 __attribute_nonnull()
 static inline void nm_set_item_slider(newmenu_item &ni, const char *text, unsigned now, unsigned low, unsigned high)
 {
-	ni.type = NM_TYPE_SLIDER;
+	ni.type = nm_type::slider;
 	ni.text = const_cast<char *>(text);
 	ni.value = now;
 	auto &slider = ni.slider();
 	slider.min_value = low;
 	slider.max_value = high;
 }
+
+struct passive_messagebox_item
+{
+	std::array<newmenu_item, 1> m;
+	passive_messagebox_item(const char *const item) :
+		m{{nm_item_menu(item)}}
+	{
+	}
+};
+
+struct passive_messagebox : passive_messagebox_item, passive_newmenu
+{
+	passive_messagebox(const menu_title title, const menu_subtitle subtitle, const char *const item, grs_canvas &src) :
+		passive_messagebox_item(item),
+		passive_newmenu(title, subtitle, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+};
 
 #define NORMAL_CHECK_BOX    "\201"
 #define CHECKED_CHECK_BOX   "\202"
@@ -594,5 +725,4 @@ static constexpr menu_number_bias_wrapper_t<B, T> menu_number_bias_wrapper(T &t)
 {
 	return t;
 }
-
 #endif

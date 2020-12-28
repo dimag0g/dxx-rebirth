@@ -66,14 +66,14 @@ struct segment_water_depth_array : std::array<uint8_t, MAX_SEGMENTS> {};
 
 class abs_vertex_lists_predicate
 {
-	const std::array<unsigned, MAX_VERTICES_PER_SEGMENT> &m_vp;
+	const std::array<vertnum_t, MAX_VERTICES_PER_SEGMENT> &m_vp;
 	const std::array<unsigned, 4> &m_sv;
 public:
 	abs_vertex_lists_predicate(const shared_segment &seg, const uint_fast32_t sidenum) :
 		m_vp(seg.verts), m_sv(Side_to_verts_int[sidenum])
 	{
 	}
-	unsigned operator()(const uint_fast32_t vv) const
+	vertnum_t operator()(const uint_fast32_t vv) const
 	{
 		return m_vp[m_sv[vv]];
 	}
@@ -91,7 +91,7 @@ public:
 
 struct verts_for_normal
 {
-	std::array<unsigned, 4> vsorted;
+	std::array<vertnum_t, 4> vsorted;
 	bool negate_flag;
 };
 
@@ -101,6 +101,7 @@ constexpr vm_distance fcd_abort_return_value{-1};
 }
 
 namespace dcx {
+namespace {
 
 // How far a point can be from a plane, and still be "in" the plane
 #define PLANE_DIST_TOLERANCE	250
@@ -111,7 +112,7 @@ static uint_fast32_t find_connect_child(const vcsegidx_t base_seg, const std::ar
 	return std::distance(b, std::find(b, end(children), base_seg));
 }
 
-static void compute_center_point_on_side(fvcvertptr &vcvertptr, vms_vector &r, const std::array<unsigned, MAX_VERTICES_PER_SEGMENT> &verts, const unsigned side)
+static void compute_center_point_on_side(fvcvertptr &vcvertptr, vms_vector &r, const std::array<vertnum_t, MAX_VERTICES_PER_SEGMENT> &verts, const unsigned side)
 {
 	vms_vector vp;
 	vm_vec_zero(vp);
@@ -120,13 +121,14 @@ static void compute_center_point_on_side(fvcvertptr &vcvertptr, vms_vector &r, c
 	vm_vec_copy_scale(r, vp, F1_0 / 4);
 }
 
-static void compute_segment_center(fvcvertptr &vcvertptr, vms_vector &r, const std::array<unsigned, MAX_VERTICES_PER_SEGMENT> &verts)
+static void compute_segment_center(fvcvertptr &vcvertptr, vms_vector &r, const std::array<vertnum_t, MAX_VERTICES_PER_SEGMENT> &verts)
 {
 	vms_vector vp;
 	vm_vec_zero(vp);
 	range_for (auto &v, verts)
 		vm_vec_add2(vp, vcvertptr(v));
 	vm_vec_copy_scale(r, vp, F1_0 / 8);
+}
 }
 
 // ------------------------------------------------------------------------------------------
@@ -169,12 +171,16 @@ bool get_side_is_quad(const shared_side &sidep)
 	}
 }
 
+namespace {
+
 // Fill in array with four absolute point numbers for a given side
-static void get_side_verts(side_vertnum_list_t &vertlist, const std::array<unsigned, MAX_VERTICES_PER_SEGMENT> &vp, const unsigned sidenum)
+static void get_side_verts(side_vertnum_list_t &vertlist, const std::array<vertnum_t, MAX_VERTICES_PER_SEGMENT> &vp, const unsigned sidenum)
 {
 	auto &sv = Side_to_verts[sidenum];
 	for (unsigned i = 4; i--;)
 		vertlist[i] = vp[sv[i]];
+}
+
 }
 
 void get_side_verts(side_vertnum_list_t &vertlist, const shared_segment &segp, const unsigned sidenum)
@@ -185,6 +191,7 @@ void get_side_verts(side_vertnum_list_t &vertlist, const shared_segment &segp, c
 }
 
 namespace dsx {
+namespace {
 
 __attribute_cold
 __noreturn
@@ -236,6 +243,7 @@ static inline uint_fast32_t create_vertex_lists_by_predicate(T &va, const shared
 {
 	return create_vertex_lists_from_values(va, segp, sidep, f(0), f(1), f(2), f(3));
 }
+}
 
 #if DXX_USE_EDITOR
 // -----------------------------------------------------------------------------------
@@ -272,7 +280,7 @@ void create_all_vertnum_lists(vertex_vertnum_array_list &vertnums, const shared_
 
 // -----
 // like create_all_vertex_lists(), but generate absolute point numbers
-uint_fast32_t create_abs_vertex_lists(vertex_array_list_t &vertices, const shared_segment &segp, const shared_side &sidep, const uint_fast32_t sidenum)
+uint_fast32_t create_abs_vertex_lists(vertnum_array_list_t &vertices, const shared_segment &segp, const shared_side &sidep, const uint_fast32_t sidenum)
 {
 	return create_vertex_lists_by_predicate(vertices, segp, sidep, abs_vertex_lists_predicate(segp, sidenum));
 }
@@ -370,6 +378,7 @@ segmasks get_seg_masks(fvcvertptr &vcvertptr, const vms_vector &checkp, const sh
 	return masks;
 }
 
+namespace {
 //this was converted from get_seg_masks()...it fills in an array of 6
 //elements for the distace behind each side, or zero if not behind
 //only gets centermask, and assumes zero rad
@@ -496,6 +505,7 @@ static void invert_shared_side_triangle_type(shared_side &s)
 	s.set_type(nt);
 }
 #endif
+}
 
 //heavy-duty error checking
 int check_segment_connections(void)
@@ -603,6 +613,7 @@ int	Doing_lighting_hack_flag=0;
 #define Doing_lighting_hack_flag 0
 #endif
 
+namespace {
 // figure out what seg the given point is in, tracing through segments
 // returns segment number, or -1 if can't find segment
 static icsegptridx_t trace_segs(const d_level_shared_segment_state &LevelSharedSegmentState, const vms_vector &p0, const vcsegptridx_t oldsegnum, const unsigned recursion_count, visited_segment_bitarray_t &visited)
@@ -649,6 +660,7 @@ static icsegptridx_t trace_segs(const d_level_shared_segment_state &LevelSharedS
 			return check;
 	}
 	return segment_none;		//we haven't found a segment
+}
 }
 
 imsegptridx_t find_point_seg(const d_level_shared_segment_state &LevelSharedSegmentState, d_level_unique_segment_state &, const vms_vector &p, const imsegptridx_t segnum)
@@ -797,6 +809,7 @@ void flush_fcd_cache(void)
 		i.seg0 = segment_none;
 }
 
+namespace {
 //	----------------------------------------------------------------------------------------------------------
 static void add_to_fcd_cache(int seg0, int seg1, int depth, vm_distance dist)
 {
@@ -820,6 +833,7 @@ static void add_to_fcd_cache(int seg0, int seg1, int depth, vm_distance dist)
 				}
 	}
 
+}
 }
 #endif
 
@@ -981,6 +995,7 @@ fcd_done1: ;
 }
 
 namespace dcx {
+namespace {
 
 static sbyte convert_to_byte(fix f)
 {
@@ -993,6 +1008,7 @@ static sbyte convert_to_byte(fix f)
 		return f >> MATRIX_PRECISION;
 }
 
+}
 }
 
 #define VEL_PRECISION 12
@@ -1116,6 +1132,7 @@ void extract_quaternionpos(const vmobjptridx_t objp, quaternionpos &qpp)
 //	Moved from editor to game so we can compute surface normals at load time.
 // -------------------------------------------------------------------------------
 
+namespace {
 // ------------------------------------------------------------------------------------------
 //	Extract a vector from a segment.  The vector goes from the start face to the end face.
 //	The point on each face is the average of the four points forming the face.
@@ -1131,6 +1148,7 @@ static void extract_vector_from_segment(fvcvertptr &vcvertptr, const shared_segm
 		vm_vec_add2(vp, vcvertptr(verts[end[i]]));
 	}
 	vm_vec_scale(vp,F1_0/4);
+}
 }
 
 //create a matrix that describes the orientation of the given segment
@@ -1179,6 +1197,8 @@ void extract_up_vector_from_segment(fvcvertptr &vcvertptr, const shared_segment 
 #if !DXX_USE_EDITOR
 }
 #endif
+
+namespace {
 
 //	----
 //	A side is determined to be degenerate if the cross products of 3 consecutive points does not point outward.
@@ -1278,13 +1298,16 @@ static void add_side_as_quad(shared_side &sidep, const vms_vector &normal)
 
 }
 
+}
+
 namespace dcx {
+namespace {
 
 // -------------------------------------------------------------------------------
 //	Return v0, v1, v2 = 3 vertices with smallest numbers.  If *negate_flag set, then negate normal after computation.
 //	Note, you cannot just compute the normal by treating the points in the opposite direction as this introduces
 //	small differences between normals which should merely be opposites of each other.
-static void get_verts_for_normal(verts_for_normal &r, const unsigned va, const unsigned vb, const unsigned vc, const unsigned vd)
+static void get_verts_for_normal(verts_for_normal &r, const vertnum_t va, const vertnum_t vb, const vertnum_t vc, const vertnum_t vd)
 {
 	auto &v = r.vsorted;
 	std::array<unsigned, 4> w;
@@ -1313,10 +1336,10 @@ static void get_verts_for_normal(verts_for_normal &r, const unsigned va, const u
 	r.negate_flag = ((w[0] + 3) % 4) == w[1] || ((w[1] + 3) % 4) == w[2];
 }
 
-static void assign_side_normal(fvcvertptr &vcvertptr, vms_vector &n, const unsigned v0, const unsigned v1, const unsigned v2)
+static void assign_side_normal(fvcvertptr &vcvertptr, vms_vector &n, const vertnum_t v0, const vertnum_t v1, const vertnum_t v2)
 {
 	verts_for_normal vfn;
-	get_verts_for_normal(vfn, v0, v1, v2, UINT32_MAX);
+	get_verts_for_normal(vfn, v0, v1, v2, vertnum_t{UINT32_MAX});
 	const auto &vsorted = vfn.vsorted;
 	const auto &negate_flag = vfn.negate_flag;
 	vm_vec_normal(n, vcvertptr(vsorted[0]), vcvertptr(vsorted[1]), vcvertptr(vsorted[2]));
@@ -1325,8 +1348,10 @@ static void assign_side_normal(fvcvertptr &vcvertptr, vms_vector &n, const unsig
 }
 
 }
+}
 
 namespace dsx {
+namespace {
 
 // -------------------------------------------------------------------------------
 static void add_side_as_2_triangles(fvcvertptr &vcvertptr, shared_segment &sp, const unsigned sidenum)
@@ -1360,7 +1385,7 @@ static void add_side_as_2_triangles(fvcvertptr &vcvertptr, shared_segment &sp, c
 		vm_vec_normal(sidep->normals[0], vvs0, vvs1, *n0v3);
 		vm_vec_normal(sidep->normals[1], *n1v1, vvs2, vvs3);
 	} else {
-		std::array<unsigned, 4> v;
+		std::array<vertnum_t, 4> v;
 
 		range_for (const unsigned i, xrange(4u))
 			v[i] = sp.verts[vs[i]];
@@ -1369,7 +1394,7 @@ static void add_side_as_2_triangles(fvcvertptr &vcvertptr, shared_segment &sp, c
 		get_verts_for_normal(vfn, v[0], v[1], v[2], v[3]);
 		auto &vsorted = vfn.vsorted;
 
-		unsigned s0v2, s1v0;
+		vertnum_t s0v2, s1v0;
 		if ((vsorted[0] == v[0]) || (vsorted[0] == v[2])) {
 			sidep->set_type(side_type::tri_02);
 			//	Now, get vertices for normal for each triangle based on triangulation type.
@@ -1387,8 +1412,10 @@ static void add_side_as_2_triangles(fvcvertptr &vcvertptr, shared_segment &sp, c
 }
 
 }
+}
 
 namespace dcx {
+namespace {
 
 static int sign(fix v)
 {
@@ -1401,6 +1428,7 @@ static int sign(fix v)
 		return 0;
 }
 
+}
 }
 
 namespace dsx {
@@ -1647,6 +1675,8 @@ unsigned set_segment_depths(vcsegidx_t start_seg, const std::array<uint8_t, MAX_
 #define	LIGHT_DISTANCE_THRESHOLD	(F1_0*80)
 #define	Magical_light_constant  (F1_0*16)
 
+namespace {
+
 //	------------------------------------------------------------------------------------------
 //cast static light from a segment to nearby segments
 static void apply_light_to_segment(visited_segment_bitarray_t &visited, const vmsegptridx_t segp, const vms_vector &segment_center, const fix light_intensity, const unsigned recursion_depth)
@@ -1693,7 +1723,7 @@ static void apply_light_to_segment(visited_segment_bitarray_t &visited, const vm
 		auto &Walls = LevelUniqueWallSubsystemState.Walls;
 		auto &vcwallptr = Walls.vcptr;
 		range_for (const int sidenum, xrange(6u)) {
-			if (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WID_RENDPAST_FLAG)
+			if (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WALL_IS_DOORWAY_FLAG::rendpast)
 				apply_light_to_segment(visited, segp.absolute_sibling(segp->children[sidenum]), segment_center, light_intensity, recursion_depth+1);
 		}
 	}
@@ -1709,7 +1739,7 @@ static void change_segment_light(const vmsegptridx_t segp, const unsigned sidenu
 	auto &Vertices = LevelSharedVertexState.get_vertices();
 	auto &Walls = LevelUniqueWallSubsystemState.Walls;
 	auto &vcwallptr = Walls.vcptr;
-	if (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WID_RENDER_FLAG)
+	if (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WALL_IS_DOORWAY_FLAG::render)
 	{
 		auto &sidep = segp->unique_segment::sides[sidenum];
 		const auto light_intensity = TmapInfo[get_texture_index(sidep.tmap_num)].lighting + TmapInfo[get_texture_index(sidep.tmap_num2)].lighting;
@@ -1758,6 +1788,8 @@ static void change_light(const d_level_shared_destructible_light_state &LevelSha
 
 	//recompute static light for segment
 	change_segment_light(segnum,sidenum,dir);
+}
+
 }
 
 //	Subtract light cast by a light source from all surfaces to which it applies light.
@@ -1816,6 +1848,8 @@ void clear_light_subtracted(void)
 
 #define	AMBIENT_SEGMENT_DEPTH		5
 
+namespace {
+
 static void ambient_mark_bfs(const vmsegptridx_t segp, segment_lava_depth_array *segdepth_lava, segment_water_depth_array *segdepth_water, const unsigned depth, const uint_fast8_t s2f_bit)
 {
 	segp->s2_flags |= s2f_bit;
@@ -1848,10 +1882,12 @@ static void ambient_mark_bfs(const vmsegptridx_t segp, segment_lava_depth_array 
 		 * No explicit check for IS_CHILD.  If !IS_CHILD, then
 		 * WALL_IS_DOORWAY never sets WID_RENDPAST_FLAG.
 		 */
-		if (!(WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, i) & WID_RENDPAST_FLAG))
+		if (!(WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, i) & WALL_IS_DOORWAY_FLAG::rendpast))
 			continue;
 		ambient_mark_bfs(segp.absolute_sibling(child), segdepth_lava, segdepth_water, depth - 1, s2f_bit);
 	}
+}
+
 }
 
 //	-----------------------------------------------------------------------------

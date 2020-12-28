@@ -1851,14 +1851,14 @@ static void hud_show_lives(const hud_draw_context_hs_mr hudctx, const hud_ar_sca
 		: static_cast<int>(FSPACX(2));
 
 	auto &canvas = hudctx.canvas;
+	auto &game_font = *GAME_FONT;
 	if (Game_mode & GM_MULTI) {
 		gr_set_fontcolor(canvas, BM_XRGB(0, 31, 0), -1);
-		auto &game_font = *GAME_FONT;
 		gr_printf(canvas, game_font, x, FSPACY(1), "%s: %d", TXT_DEATHS, player_info.net_killed_total);
 	}
 	else if (const uint16_t lives = get_local_player().lives - 1)
 	{
-		gr_set_curfont(canvas, GAME_FONT);
+		gr_set_curfont(canvas, game_font);
 		gr_set_fontcolor(canvas, BM_XRGB(0, 20, 0), -1);
 #if defined(DXX_BUILD_DESCENT_II)
 		auto &multires_gauge_graphic = hudctx.multires_gauge_graphic;
@@ -1918,7 +1918,7 @@ static void sb_show_lives(const hud_draw_context_hs_mr hudctx, const hud_ar_scal
 }
 
 #ifndef RELEASE
-static void show_time(grs_canvas &canvas)
+static void show_time(grs_canvas &canvas, const grs_font &cv_font)
 {
 	auto &plr = get_local_player();
 	const unsigned secs = f2i(plr.time_level) % 60;
@@ -1928,7 +1928,7 @@ static void show_time(grs_canvas &canvas)
 		Color_0_31_0 = BM_XRGB(0,31,0);
 	gr_set_fontcolor(canvas, Color_0_31_0, -1);
 	auto &game_font = *GAME_FONT;
-	gr_printf(canvas, game_font, FSPACX(2), (LINE_SPACING(*canvas.cv_font, *GAME_FONT) * 15), "%d:%02d", mins, secs);
+	gr_printf(canvas, game_font, FSPACX(2), (LINE_SPACING(cv_font, game_font) * 15), "%d:%02d", mins, secs);
 }
 #endif
 
@@ -2694,7 +2694,7 @@ static void draw_secondary_ammo_info(const hud_draw_context_hs_mr hudctx, const 
 static void draw_weapon_box(const hud_draw_context_hs_mr hudctx, const player_info &player_info, const unsigned weapon_num, const gauge_inset_window_view wt)
 {
 	auto &canvas = hudctx.canvas;
-	gr_set_curfont(canvas, GAME_FONT);
+	gr_set_curfont(canvas, *GAME_FONT);
 
 	const auto laser_level_changed = (wt == gauge_inset_window_view::primary && weapon_num == primary_weapon_index_t::LASER_INDEX && (player_info.laser_level != old_laser_level));
 
@@ -3671,7 +3671,7 @@ void draw_hud(grs_canvas &canvas, const object &plrobj, const control_info &Cont
 
 #ifndef RELEASE
 		if (!(Game_mode&GM_MULTI && Show_kill_list))
-			show_time(canvas);
+			show_time(canvas, *canvas.cv_font);
 #endif
 
 #if defined(DXX_BUILD_DESCENT_II)
@@ -3723,7 +3723,7 @@ void render_gauges()
 	if (shields < 0 ) shields = 0;
 
 	gr_set_default_canvas();
-	gr_set_curfont(*grd_curcanv, GAME_FONT);
+	gr_set_curfont(*grd_curcanv, *GAME_FONT);
 
 	if (Newdemo_state == ND_STATE_RECORDING)
 	{

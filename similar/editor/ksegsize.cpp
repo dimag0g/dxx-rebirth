@@ -39,21 +39,24 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define ZDIM	2
 
 #define	MAX_MODIFIED_VERTICES	32
-static std::array<int, MAX_MODIFIED_VERTICES>		Modified_vertices;
+namespace {
+static std::array<vertnum_t, MAX_MODIFIED_VERTICES>		Modified_vertices;
 int		Modified_vertex_index = 0;
+}
 
 namespace dsx {
+
+namespace {
 
 // ------------------------------------------------------------------------------------------
 static void validate_modified_segments(void)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
-	int	v0;
 	visited_segment_bitarray_t modified_segments;
 	auto &vcvertptr = Vertices.vcptr;
 	for (int v=0; v<Modified_vertex_index; v++) {
-		v0 = Modified_vertices[v];
+		const auto v0 = Modified_vertices[v];
 
 		range_for (const auto &&segp, vmsegptridx)
 		{
@@ -79,7 +82,7 @@ static void validate_modified_segments(void)
 
 // ------------------------------------------------------------------------------------------
 //	Scale vertex *vertp by vector *vp, scaled by scale factor scale_factor
-static void scale_vert_aux(const unsigned vertex_ind, const vms_vector &vp, const fix scale_factor)
+static void scale_vert_aux(const vertnum_t vertex_ind, const vms_vector &vp, const fix scale_factor)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
@@ -95,12 +98,12 @@ static void scale_vert_aux(const unsigned vertex_ind, const vms_vector &vp, cons
 }
 
 // ------------------------------------------------------------------------------------------
-static void scale_vert(const shared_segment &sp, const unsigned vertex_ind, const vms_vector &vp, const fix scale_factor)
+static void scale_vert(const shared_segment &sp, const vertnum_t vertex_ind, const vms_vector &vp, const fix scale_factor)
 {
 	auto &verts = sp.verts;
 	switch (SegSizeMode) {
 		case SEGSIZEMODE_FREE:
-			if (is_free_vertex(vertex_ind))
+			if (is_free_vertex(vcsegptr, vertex_ind))
 				scale_vert_aux(vertex_ind, vp, scale_factor);
 			break;
 		case SEGSIZEMODE_ALL:
@@ -134,7 +137,7 @@ static void scale_free_verts(const shared_segment &sp, const vms_vector &vp, con
 	range_for (auto &v, Side_to_verts[side])
 	{
 		const auto vertex_ind = sp.verts[v];
-		if (SegSizeMode || is_free_vertex(vertex_ind))
+		if (SegSizeMode || is_free_vertex(vcsegptr, vertex_ind))
 			scale_vert(sp, vertex_ind, vp, scale_factor);
 	}
 
@@ -194,6 +197,8 @@ static void extract_vector_from_segment_side(const shared_segment &sp, const uns
 	vm_vec_scale(vp, F1_0/2);
 }
 
+}
+
 // ------------------------------------------------------------------------------------------
 //	Extract the right vector from segment *sp, return in *vp.
 //	The forward vector is defined to be the vector from the the center of the left face of the segment
@@ -212,6 +217,7 @@ void med_extract_up_vector_from_segment_side(const shared_segment &sp, int siden
 	extract_vector_from_segment_side(sp, sidenum, vp, 1, 2, 0, 3);
 }
 
+namespace {
 
 // -----------------------------------------------------------------------------
 //	Increase the size of Cursegp in dimension dimension by amount
@@ -271,6 +277,8 @@ static int segsize_common(int dimension, fix amount)
 	Update_flags |= UF_WORLD_CHANGED;
 	mine_changed = 1;
 	return 1;
+}
+
 }
 
 // -----------------------------------------------------------------------------
@@ -379,6 +387,8 @@ int ToggleSegSizeMode(void)
 	return 1;
 }
 
+namespace {
+
 //	---------------------------------------------------------------------------
 static int	PerturbCursideCommon(fix amount)
 {
@@ -423,6 +433,8 @@ static int	PerturbCursideCommon(fix amount)
 	mine_changed = 1;
 
 	return 1;
+}
+
 }
 
 //	---------------------------------------------------------------------------

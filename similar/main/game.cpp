@@ -1255,15 +1255,6 @@ namespace {
 #define EXT_MUSIC_TEXT "Audio CD"
 #endif
 
-static int free_help(newmenu *, const d_event &event, newmenu_item *items)
-{
-	if (event.type == EVENT_WINDOW_CLOSE)
-	{
-		std::default_delete<newmenu_item[]>()(items);
-	}
-	return 0;
-}
-
 #if (defined(__APPLE__) || defined(macintosh))
 #define _DXX_HELP_MENU_SAVE_LOAD(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "Alt-F2/F3 (\x85-SHIFT-s/o)\t  SAVE/LOAD GAME", HELP_AF2_3)	\
@@ -1344,18 +1335,30 @@ static int free_help(newmenu *, const d_event &event, newmenu_item *items)
 	_DXX_HELP_MENU_AUDIO(VERB)	\
 	_DXX_HELP_MENU_HINT_CMD_KEY(VERB, HELP)	\
 
-enum {
-	DXX_HELP_MENU(ENUM)
-};
-
 }
 
 void show_help()
 {
-	const unsigned nitems = DXX_HELP_MENU(COUNT);
-	auto m = new newmenu_item[nitems];
-	DXX_HELP_MENU(ADD);
-	newmenu_dotiny(nullptr, TXT_KEYS, unchecked_partial_range(m, nitems), tab_processing_flag::ignore, free_help, m);
+	struct help_menu_items
+	{
+		enum {
+			DXX_HELP_MENU(ENUM)
+		};
+		std::array<newmenu_item, DXX_HELP_MENU(COUNT)> m;
+		help_menu_items()
+		{
+			DXX_HELP_MENU(ADD);
+		}
+	};
+	struct help_menu : help_menu_items, passive_newmenu
+	{
+		help_menu(grs_canvas &src) :
+			passive_newmenu(menu_title{nullptr}, menu_subtitle{TXT_KEYS}, menu_filename{nullptr}, tiny_mode_flag::tiny, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+		{
+		}
+	};
+	auto menu = window_create<help_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #undef DXX_HELP_MENU
@@ -1385,10 +1388,26 @@ enum {
 
 void show_netgame_help()
 {
-	const unsigned nitems = DSX_NETHELP_MENU(COUNT);
-	auto m = new newmenu_item[nitems];
-	DSX_NETHELP_MENU(ADD);
-	newmenu_dotiny(nullptr, TXT_KEYS, unchecked_partial_range(m, nitems), tab_processing_flag::ignore, free_help, m);
+	struct help_menu_items
+	{
+		enum {
+			DSX_NETHELP_MENU(ENUM)
+		};
+		std::array<newmenu_item, DSX_NETHELP_MENU(COUNT)> m;
+		help_menu_items()
+		{
+			DSX_NETHELP_MENU(ADD);
+		}
+	};
+	struct help_menu : help_menu_items, passive_newmenu
+	{
+		help_menu(grs_canvas &src) :
+			passive_newmenu(menu_title{nullptr}, menu_subtitle{TXT_KEYS}, menu_filename{nullptr}, tiny_mode_flag::tiny, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+		{
+		}
+	};
+	auto menu = window_create<help_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #undef DSX_NETHELP_MENU
@@ -1415,10 +1434,26 @@ enum {
 
 void show_newdemo_help()
 {
-	const unsigned nitems = DXX_NEWDEMO_HELP_MENU(COUNT);
-	auto m = new newmenu_item[nitems];
-	DXX_NEWDEMO_HELP_MENU(ADD);
-	newmenu_dotiny(nullptr, "DEMO PLAYBACK CONTROLS", unchecked_partial_range(m, nitems), tab_processing_flag::ignore, free_help, m);
+	struct help_menu_items
+	{
+		enum {
+			DXX_NEWDEMO_HELP_MENU(ENUM)
+		};
+		std::array<newmenu_item, DXX_NEWDEMO_HELP_MENU(COUNT)> m;
+		help_menu_items()
+		{
+			DXX_NEWDEMO_HELP_MENU(ADD);
+		}
+	};
+	struct help_menu : help_menu_items, passive_newmenu
+	{
+		help_menu(grs_canvas &src) :
+			passive_newmenu(menu_title{nullptr}, menu_subtitle{"DEMO PLAYBACK CONTROLS"}, menu_filename{nullptr}, tiny_mode_flag::tiny, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+		{
+		}
+	};
+	auto menu = window_create<help_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 }
@@ -1552,8 +1587,7 @@ game_window *game_setup()
 	last_drawn_cockpit = -1;	// Force cockpit to redraw next time a frame renders.
 	Endlevel_sequence = 0;
 
-	auto game_wind = std::make_unique<game_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	game_wind->send_creation_events();
+	auto game_wind = window_create<game_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 	reset_palette_add();
 	init_cockpit();
 	init_gauges();
@@ -1576,7 +1610,7 @@ game_window *game_setup()
 	fix_object_segs();
 	if (CGameArg.SysAutoRecordDemo && Newdemo_state == ND_STATE_NORMAL)
 		newdemo_start_recording();
-	return game_wind.release();
+	return game_wind;
 }
 
 // Event handler for the game
@@ -2052,7 +2086,7 @@ static void flicker_lights(const d_level_shared_destructible_light_state &LevelS
 		}
 
 		//make sure this is actually a light
-		if (! (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WID_RENDER_FLAG))
+		if (! (WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum) & WALL_IS_DOORWAY_FLAG::render))
 			continue;
 
 		if ((f.timer -= FrameTime) < 0)

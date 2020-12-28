@@ -102,7 +102,7 @@ static_assert(sizeof(all_scores) == 294, "high score size wrong");
 static_assert(sizeof(all_scores) == 336, "high score size wrong");
 #endif
 
-void scores_view(stats_info *const last_game, int citem);
+void scores_view(const stats_info *last_game, int citem);
 
 static void scores_read(all_scores *scores)
 {
@@ -150,7 +150,7 @@ static void scores_write(all_scores *scores)
 	RAIIPHYSFS_File fp{PHYSFS_openWrite(SCORES_FILENAME)};
 	if (!fp)
 	{
-		nm_messagebox( TXT_WARNING, 1, TXT_OK, "%s\n'%s'", TXT_UNABLE_TO_OPEN, SCORES_FILENAME  );
+		nm_messagebox(menu_title{TXT_WARNING}, 1, TXT_OK, "%s\n'%s'", TXT_UNABLE_TO_OPEN, SCORES_FILENAME);
 		return;
 	}
 
@@ -266,51 +266,46 @@ void scores_maybe_add_player()
 {
 	auto &Objects = LevelUniqueObjectState.Objects;
 	auto &vmobjptr = Objects.vmptr;
-	int position;
 	all_scores scores;
 	stats_info last_game;
 
 	if ((Game_mode & GM_MULTI) && !(Game_mode & GM_MULTI_COOP))
 		return;
-  
 	scores_read(&scores);
-	
-	position = MAX_HIGH_SCORES;
 	auto &player_info = get_local_plrobj().ctype.player_info;
-	for (int i=0; i<MAX_HIGH_SCORES; i++ ) {
-		if (player_info.mission.score > scores.stats[i].score)
-		{
-			position = i;
-			break;
-		}
-	}
-	
-	if ( position == MAX_HIGH_SCORES ) {
-		scores_fill_struct( &last_game );
+	const auto predicate = [player_mission_score = player_info.mission.score](const stats_info &stats) {
+		return player_mission_score > stats.score;
+	};
+	const auto begin_score_stats = std::begin(scores.stats);
+	const auto end_score_stats = std::end(scores.stats);
+	const auto iter_position = std::find_if(begin_score_stats, end_score_stats, predicate);
+	const auto position = std::distance(begin_score_stats, iter_position);
+	stats_info *const ptr_last_game = (iter_position == end_score_stats)
+		? &last_game
+		: nullptr;
+	if (ptr_last_game)
+	{
+		scores_fill_struct(ptr_last_game);
 	} else {
-		if ( position==0 )	{
+		if (iter_position == begin_score_stats)
+		{
 			std::array<char, sizeof(scores.cool_saying)> text1{};
 			std::array<newmenu_item, 2> m{{
 				nm_item_text(TXT_COOL_SAYING),
 				nm_item_input(text1),
 			}};
-			newmenu_do( TXT_HIGH_SCORE, TXT_YOU_PLACED_1ST, m, unused_newmenu_subfunction, unused_newmenu_userdata );
+			newmenu_do2(menu_title{TXT_HIGH_SCORE}, menu_subtitle{TXT_YOU_PLACED_1ST}, m, unused_newmenu_subfunction, unused_newmenu_userdata);
 			strcpy(scores.cool_saying, text1[0] ? text1.data() : "No comment");
 		} else {
-			nm_messagebox( TXT_HIGH_SCORE, 1, TXT_OK, "%s %s!", TXT_YOU_PLACED, get_placement_slot_string(position));
+			nm_messagebox(menu_title{TXT_HIGH_SCORE}, 1, TXT_OK, "%s %s!", TXT_YOU_PLACED, get_placement_slot_string(position));
 		}
-	
+
 		// move everyone down...
-		for ( int i=MAX_HIGH_SCORES-1; i>position; i-- ) {
-			scores.stats[i] = scores.stats[i-1];
-		}
-
-		scores_fill_struct( &scores.stats[position] );
-	
+		std::move_backward(iter_position, std::prev(end_score_stats), end_score_stats);
+		scores_fill_struct(iter_position);
 		scores_write(&scores);
-
 	}
-	scores_view(&last_game, position);
+	scores_view(ptr_last_game, position);
 }
 
 }
@@ -353,7 +348,7 @@ namespace dsx {
 
 namespace {
 
-static void scores_draw_item(grs_canvas &canvas, const grs_font &cv_font, const unsigned i, stats_info *const stats)
+static void scores_draw_item(grs_canvas &canvas, const grs_font &cv_font, const unsigned i, const stats_info *const stats)
 {
 	char buffer[20];
 
@@ -406,12 +401,15 @@ static void scores_draw_item(grs_canvas &canvas, const grs_font &cv_font, const 
 
 struct scores_menu : window
 {
-	int			citem;
+	const int citem;
 	fix64			t1;
 	int looper = 0;
 	all_scores	scores;
-	stats_info	last_game;
-	using window::window;
+	const stats_info last_game;
+	scores_menu(grs_canvas &src, int x, int y, int w, int h, int citem, const stats_info *last_game) :
+		window(src, x, y, w, h), citem(citem), t1(timer_query()), last_game(last_game ? *last_game : stats_info{})
+	{
+	}
 	virtual window_event_result event_handler(const d_event &) override;
 };
 
@@ -435,7 +433,7 @@ window_event_result scores_menu::event_handler(const d_event &event)
 					if (citem < 0)
 					{
 						// Reset scores...
-						if (nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_NO, TXT_YES), TXT_RESET_HIGH_SCORES) == 1)
+						if (nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie(TXT_NO, TXT_YES), menu_subtitle{TXT_RESET_HIGH_SCORES}) == 1)
 						{
 							PHYSFS_delete(SCORES_FILENAME);
 							scores_view(&last_game, citem);	// create new scores window
@@ -521,15 +519,11 @@ window_event_result scores_menu::event_handler(const d_event &event)
 	return window_event_result::ignored;
 }
 
-void scores_view(stats_info *const last_game, int citem)
+void scores_view(const stats_info *const last_game, int citem)
 {
 	const auto &&fspacx320 = FSPACX(320);
 	const auto &&fspacy200 = FSPACY(200);
-	auto menu = std::make_unique<scores_menu>(grd_curscreen->sc_canvas, (SWIDTH - fspacx320) / 2, (SHEIGHT - fspacy200) / 2, fspacx320, fspacy200);
-	menu->citem = citem;
-	menu->t1 = timer_query();
-	if (last_game)
-		menu->last_game = *last_game;
+	auto menu = window_create<scores_menu>(grd_curscreen->sc_canvas, (SWIDTH - fspacx320) / 2, (SHEIGHT - fspacy200) / 2, fspacx320, fspacy200, citem, last_game);
 
 	newmenu_free_background();
 
@@ -537,9 +531,6 @@ void scores_view(stats_info *const last_game, int citem)
 
 	set_screen_mode(SCREEN_MENU);
 	show_menus();
-
-	menu->send_creation_events();
-	menu.release();
 }
 
 }

@@ -227,21 +227,17 @@ using ui_subfunction_t = window_event_result (*)(struct UI_DIALOG *,const d_even
 struct UI_DIALOG : window
 {
 	// TODO: Make these private
-	ui_subfunction_t<void>	d_callback;
 	UI_GADGET *gadget = nullptr;
 	UI_GADGET *keyboard_focus_gadget = nullptr;
-	void			*d_userdata;
 	short           d_width, d_height;
 	enum dialog_flags d_flags;
 
 public:
-	// For creating the dialog, there are two ways - using the (older) ui_create_dialog function
-	// or using the constructor, passing an event handler that takes a subclass of UI_DIALOG.
-	explicit UI_DIALOG(short x, short y, short w, short h, enum dialog_flags flags, ui_subfunction_t<void> callback, void *userdata);
+	explicit UI_DIALOG(short x, short y, short w, short h, enum dialog_flags flags);
 
 	~UI_DIALOG();
 	virtual window_event_result event_handler(const d_event &) override;
-	virtual window_event_result callback_handler(const d_event &);
+	virtual window_event_result callback_handler(const d_event &) = 0;
 };
 
 #define B1_JUST_PRESSED     (event.type == EVENT_MOUSE_BUTTON_DOWN && event_mouse_get_button(event) == 0)
@@ -271,14 +267,6 @@ int ui_messagebox( short xc, short yc, const char * text, const ui_messagebox_ti
 
 class unused_ui_userdata_t;
 constexpr unused_ui_userdata_t *unused_ui_userdata = nullptr;
-
-template <typename T1, typename... ConstructionArgs>
-T1 *ui_create_dialog(const short x, const short y, const short w, const short h, const enum dialog_flags flags, ConstructionArgs &&... args)
-{
-	auto r = std::make_unique<T1>(x, y, w, h, flags, std::forward<ConstructionArgs>(args)...);
-	r->send_creation_events();
-	return r.release();
-}
 
 void ui_dialog_set_current_canvas(UI_DIALOG &dlg);
 void ui_close_dialog(UI_DIALOG &dlg);

@@ -187,9 +187,11 @@ int convert_tmap(int tmap)
     return (tmap >= NumTextures) ? tmap % NumTextures : tmap;
 }
 
+namespace {
 static unsigned convert_polymod(const unsigned N_polygon_models, const unsigned polymod)
 {
     return (polymod >= N_polygon_models) ? polymod % N_polygon_models : polymod;
+}
 }
 #elif defined(DXX_BUILD_DESCENT_II)
 namespace {
@@ -197,6 +199,7 @@ using savegame_pof_names_type = std::array<char[FILENAME_LEN], MAX_POLYGON_MODEL
 }
 #endif
 
+namespace {
 static void verify_object(const d_vclip_array &Vclip, object &obj, const savegame_pof_names_type &Save_pof_names)
 {
 	auto &Robot_info = LevelSharedRobotInfoState.Robot_info;
@@ -647,8 +650,10 @@ static void read_object(const vmobjptr_t obj,PHYSFS_File *f,int version)
 
 }
 }
+}
 
 #if DXX_USE_EDITOR
+namespace {
 static int PHYSFSX_writeMatrix(PHYSFS_File *file, const vms_matrix &m)
 {
 	if (PHYSFSX_writeVector(file, m.rvec) < 1 ||
@@ -666,9 +671,11 @@ static int PHYSFSX_writeAngleVec(PHYSFS_File *file, const vms_angvec &v)
 		return 0;
 	return 1;
 }
+}
 
 //writes one object to the given file
 namespace dsx {
+namespace {
 static void write_object(const object &obj, short version, PHYSFS_File *f)
 {
 #if defined(DXX_BUILD_DESCENT_I)
@@ -846,6 +853,7 @@ static void write_object(const object &obj, short version, PHYSFS_File *f)
 
 }
 }
+}
 #endif
 
 // --------------------------------------------------------------------
@@ -855,6 +863,7 @@ static void write_object(const object &obj, short version, PHYSFS_File *f)
 // Otherwise it loads the appropriate level mine.
 // returns 0=everything ok, 1=old version, -1=error
 namespace dsx {
+namespace {
 
 static void validate_segment_wall(const vcsegptridx_t seg, shared_side &side, const unsigned sidenum)
 {
@@ -871,7 +880,7 @@ static void validate_segment_wall(const vcsegptridx_t seg, shared_side &side, co
 				if (connected_seg == segment_none)
 				{
 					rwn0 = wall_none;
-					LevelError("segment %u side %u wall %u has no child segment; removing orphan wall.", seg.get_unchecked_index(), sidenum, wn0);
+					LevelError("segment %u side %u wall %u has no child segment; removing orphan wall.", seg.get_unchecked_index(), sidenum, static_cast<unsigned>(wn0));
 					return;
 				}
 				const shared_segment &vcseg = *vcsegptr(connected_seg);
@@ -880,7 +889,7 @@ static void validate_segment_wall(const vcsegptridx_t seg, shared_side &side, co
 				if (wn1 == wall_none)
 				{
 					rwn0 = wall_none;
-					LevelError("segment %u side %u wall %u has child segment %u side %u, but no wall; removing orphan wall.", seg.get_unchecked_index(), sidenum, wn0, connected_seg, connected_side);
+					LevelError("segment %u side %u wall %u has child segment %u side %u, but no wall; removing orphan wall.", seg.get_unchecked_index(), sidenum, static_cast<unsigned>(wn0), connected_seg, connected_side);
 					return;
 				}
 			}
@@ -1030,13 +1039,14 @@ static int load_game_data(
 #elif defined(DXX_BUILD_DESCENT_II)
 			nw.clip_num	= w.clip_num;
 #endif
-			nw.keys		= w.keys;
+			nw.keys		= static_cast<wall_key>(w.keys);
 			nw.state		= WALL_DOOR_CLOSED;
 		} else {
 			v16_wall w;
 			v16_wall_read(LoadFile, w);
 			nw.segnum = segment_none;
-			nw.sidenum = nw.linked_wall = -1;
+			nw.sidenum = -1;
+			nw.linked_wall = wall_none;
 			nw.type		= w.type;
 			nw.flags		= w.flags & ~WALL_EXPLODING;
 			nw.hps		= w.hps;
@@ -1046,7 +1056,7 @@ static int load_game_data(
 #elif defined(DXX_BUILD_DESCENT_II)
 			nw.clip_num	= w.clip_num;
 #endif
-			nw.keys		= w.keys;
+			nw.keys		= static_cast<wall_key>(w.keys);
 		}
 	}
 
@@ -1274,6 +1284,7 @@ static int load_game_data(
 		return 0;
 }
 }
+}
 
 // ----------------------------------------------------------------------------
 
@@ -1311,9 +1322,6 @@ int load_level(
 	auto &Objects = LevelUniqueObjectState.Objects;
 	auto &Vertices = LevelSharedVertexState.get_vertices();
 	auto &vmobjptridx = Objects.vmptridx;
-#if DXX_USE_EDITOR
-	int use_compiled_level=1;
-#endif
 	char filename[PATH_MAX];
 	int sig, minedata_offset, gamedata_offset;
 	int mine_err, game_err;
@@ -1323,26 +1331,6 @@ int load_level(
 	#endif
 
 	strcpy(filename,filename_passed);
-
-#if DXX_USE_EDITOR
-	//if we have the editor, try the LVL first, no matter what was passed.
-	//if we don't have an LVL, try what was passed or RL2  
-	//if we don't have the editor, we just use what was passed
-
-	change_filename_extension(filename,filename_passed,".lvl");
-	use_compiled_level = 0;
-
-	if (!PHYSFSX_exists(filename,1))
-	{
-		const char *p = strrchr(filename_passed, '.');
-
-		if (d_stricmp(p, ".lvl"))
-			strcpy(filename, filename_passed);	// set to what was passed
-		else
-			change_filename_extension(filename, filename, "." DXX_LEVEL_FILE_EXTENSION);
-		use_compiled_level = 1;
-	}		
-#endif
 
 	auto LoadFile = PHYSFSX_openReadBuffered(filename);
 	if (!LoadFile)
@@ -1429,15 +1417,6 @@ int load_level(
 #endif
 
 	PHYSFSX_fseek(LoadFile,minedata_offset,SEEK_SET);
-#if DXX_USE_EDITOR
-	if (!use_compiled_level) {
-		mine_err = load_mine_data(LoadFile);
-#if 0 // get from d1src if needed
-		// Compress all uv coordinates in mine, improves texmap precision. --MK, 02/19/96
-		compress_uv_coordinates_all();
-#endif
-	} else
-	#endif
 		//NOTE LINK TO ABOVE!!
 		mine_err = load_mine_data_compiled(LoadFile, filename);
 
@@ -1447,7 +1426,7 @@ int load_level(
 	 */
 	auto &vmvertptr = Vertices.vmptr;
 	if (Current_mission && !d_stricmp("Descent: First Strike",Current_mission_longname) && !d_stricmp("level19.rdl",filename) && PHYSFS_fileLength(LoadFile) == 136706)
-		vmvertptr(1905u)->z = -385 * F1_0;
+		vmvertptr(vertnum_t{1905u})->z = -385 * F1_0;
 #if defined(DXX_BUILD_DESCENT_II)
 	/* !!!HACK!!!
 	 * Descent 2 - Level 12: MAGNACORE STATION has a segment (104) with illegal dimensions.
@@ -1516,8 +1495,8 @@ int load_level(
 	//If an old version, ask the use if he wants to save as new version
 	if (((LEVEL_FILE_VERSION>1) && Gamesave_current_version < LEVEL_FILE_VERSION) || mine_err==1 || game_err==1) {
 		gr_palette_load(gr_palette);
-		if (nm_messagebox_str(nullptr, nm_messagebox_tie("Don't Save", "Save"), "You just loaded a old version level.  Would\n"
-						"you like to save it as a current version level?")==1)
+		if (nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie("Don't Save", "Save"), menu_subtitle{"You just loaded a old version level.  Would\n"
+						"you like to save it as a current version level?"}) == 1)
 			save_level(filename);
 	}
 #elif defined(DXX_BUILD_DESCENT_II)
@@ -1546,10 +1525,10 @@ int load_level(
 	if (check_segment_connections())
 	{
 #ifndef NDEBUG
-		nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), 
-				"Connectivity errors detected in\n"
+		nm_messagebox_str(menu_title{TXT_ERROR}, nm_messagebox_tie(TXT_OK),
+				menu_subtitle{"Connectivity errors detected in\n"
 				"mine.  See monochrome screen for\n"
-				"details, and contact Matt or Mike." );
+				"details, and contact Matt or Mike."});
 	#endif
 	}
 
@@ -1564,11 +1543,19 @@ int load_level(
 #if DXX_USE_EDITOR
 int get_level_name()
 {
-	std::array<newmenu_item, 2> m{{
-		nm_item_text("Please enter a name for this mine:"),
-		nm_item_input(Current_level_name.next()),
-	}};
-	return newmenu_do(nullptr, "Enter mine name", m, unused_newmenu_subfunction, unused_newmenu_userdata) >= 0;
+	using items_type = std::array<newmenu_item, 2>;
+	struct request_menu : items_type, passive_newmenu
+	{
+		request_menu() :
+			items_type{{
+				nm_item_text("Please enter a name for this mine:"),
+				nm_item_input(Current_level_name.next()),
+			}},
+			passive_newmenu(menu_title{nullptr}, menu_subtitle{"Enter mine name"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(*static_cast<items_type *>(this), 1), *grd_curcanv, draw_box_flag::none)
+		{
+		}
+	};
+	return run_blocking_newmenu<request_menu>();
 }
 #endif
 
@@ -1652,6 +1639,7 @@ int create_new_mine(void)
 int	Errors_in_mine;
 
 namespace dsx {
+namespace {
 // -----------------------------------------------------------------------------
 #if defined(DXX_BUILD_DESCENT_II)
 static unsigned compute_num_delta_light_records(fvcdlindexptr &vcdlindexptr)
@@ -1849,7 +1837,7 @@ static int save_level_sub(
 			if (is_real_level(filename)) {
 				gr_palette_load(gr_palette);
 	 
-				if (nm_messagebox( NULL, 2, "Cancel Save", "Save", "Warning: %i errors in this mine!\n", Errors_in_mine )!=1)	{
+				if (nm_messagebox(menu_title{nullptr}, 2, "Cancel Save", "Save", "Warning: %i errors in this mine!\n", Errors_in_mine )!=1)	{
 					return 1;
 				}
 			}
@@ -1870,7 +1858,7 @@ static int save_level_sub(
 	if (!SaveFile)
 	{
 		gr_palette_load(gr_palette);
-		nm_messagebox(nullptr, 1, TXT_OK, "ERROR: Cannot write to '%s'.", temp_filename);
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "ERROR: Cannot write to '%s'.", temp_filename);
 		return 1;
 	}
 
@@ -1950,11 +1938,6 @@ static int save_level_sub(
 #endif
 
 	minedata_offset = PHYSFS_tell(SaveFile);
-#if 0	// only save compiled mine data
-	if ( !compiled_version )	
-		save_mine_data(SaveFile);
-	else
-#endif
 		save_mine_data_compiled(SaveFile);
 	gamedata_offset = PHYSFS_tell(SaveFile);
 	save_game_data(
@@ -1986,6 +1969,7 @@ static int save_level_sub(
 
 	return 0;
 
+}
 }
 
 int save_level(

@@ -42,7 +42,7 @@ namespace {
 struct menu : UI_DIALOG
 {
 	explicit menu(short x, short y, short w, short h, enum dialog_flags flags, int &choice, int NumButtons) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr),
+		UI_DIALOG(x, y, w, h, flags),
 		button_g(std::make_unique<std::unique_ptr<UI_GADGET_BUTTON>[]>(NumButtons)),
 		choice(&choice),
 		num_buttons(NumButtons)
@@ -126,7 +126,7 @@ int MenuX( int x, int y, int NumButtons, const char *const text[] )
 		y = h - height;
 	}
 
-	auto dlg = ui_create_dialog<menu>(x, y, width, height, static_cast<dialog_flags>(DF_FILLED | DF_SAVE_BG | DF_MODAL), choice, NumButtons);
+	auto dlg = window_create<menu>(x, y, width, height, static_cast<dialog_flags>(DF_FILLED | DF_SAVE_BG | DF_MODAL), choice, NumButtons);
 
 	x = MENU_BORDER+3;
 	y = MENU_BORDER+3;

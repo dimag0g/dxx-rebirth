@@ -94,59 +94,126 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "dxxsconf.h"
 #include "dsx-ns.h"
 #include "compiler-range_for.h"
+#include "d_enumerate.h"
 #include "d_range.h"
+#include "d_zip.h"
 #include "partial_range.h"
 #include <memory>
 #include <utility>
 
 // Menu IDs...
-enum MENUS
-{
-    MENU_NEW_GAME = 0,
-    MENU_GAME,
-    MENU_EDITOR,
-    MENU_VIEW_SCORES,
-    MENU_QUIT,
-    MENU_LOAD_GAME,
-    MENU_SAVE_GAME,
-    MENU_DEMO_PLAY,
-    MENU_CONFIG,
-    MENU_REJOIN_NETGAME,
-    MENU_DIFFICULTY,
-    MENU_HELP,
-    MENU_NEW_PLAYER,
-#if DXX_USE_UDP
-        MENU_MULTIPLAYER,
-    #endif
-
-    MENU_SHOW_CREDITS,
-
-#if DXX_USE_UDP
-    MENU_START_UDP_NETGAME,
-    MENU_JOIN_MANUAL_UDP_NETGAME,
-    MENU_JOIN_LIST_UDP_NETGAME,
-    #endif
-    #ifndef RELEASE
-    MENU_SANDBOX
-    #endif
-};
-
-//ADD_ITEM("Start netgame...", MENU_START_NETGAME, -1 );
-//ADD_ITEM("Send net message...", MENU_SEND_NET_MESSAGE, -1 );
-
-#define ADD_ITEM(t,value,key)  do { nm_set_item_menu(m[num_options], t); menu_choice[num_options]=value;num_options++; } while (0)
-
-static std::array<window *, 16> menus;
-
-// Function Prototypes added after LINTING
-static window_event_result do_new_game_menu(void);
-#if DXX_USE_UDP
-static void do_multi_player_menu();
-#endif
 
 namespace dcx {
 
 namespace {
+
+enum {
+	optgrp_autoselect_firing,
+};
+
+enum class main_menu_item_index
+{
+	start_new_singleplayer_game = 0,
+	load_existing_singleplayer_game,
+#if DXX_USE_UDP
+	open_multiplayer_submenu,
+#endif
+	open_options_submenu,
+	create_new_pilot_profile,
+	open_pick_recorded_demo_submenu,
+	open_high_scores_dialog,
+	open_credits_scroll_window,
+    quit_program,
+#ifndef RELEASE
+#if DXX_USE_EDITOR
+    open_mine_editor_window,
+#endif
+	open_coder_sandbox_submenu,
+#endif
+	end,
+};
+
+struct main_menu_items
+{
+	enumerated_array<newmenu_item, static_cast<std::size_t>(main_menu_item_index::end), main_menu_item_index> m;
+	main_menu_items();
+};
+
+#if DXX_USE_UDP
+enum class netgame_menu_item_index
+{
+	start_new_multiplayer_game,
+	list_multiplayer_games,
+	join_multiplayer_game,
+};
+
+struct netgame_menu_items
+{
+	enumerated_array<newmenu_item, 3, netgame_menu_item_index> m;
+	netgame_menu_items();
+};
+
+netgame_menu_items::netgame_menu_items()
+{
+	nm_set_item_menu(m[netgame_menu_item_index::start_new_multiplayer_game], "HOST GAME");
+#if DXX_USE_TRACKER
+#define DXX_MULTIPLAYER_MENU_FIND_GAME_TYPE_STRING	"/ONLINE"
+#else
+#define DXX_MULTIPLAYER_MENU_FIND_GAME_TYPE_STRING	""
+#endif
+	nm_set_item_menu(m[netgame_menu_item_index::list_multiplayer_games], "FIND LAN" DXX_MULTIPLAYER_MENU_FIND_GAME_TYPE_STRING " GAMES");
+#undef DXX_MULTIPLAYER_MENU_FIND_GAME_TYPE_STRING
+	nm_set_item_menu(m[netgame_menu_item_index::join_multiplayer_game], "JOIN GAME MANUALLY");
+}
+#endif
+
+static std::array<window *, 16> menus;
+
+main_menu_items::main_menu_items()
+{
+	nm_set_item_menu(m[main_menu_item_index::start_new_singleplayer_game], TXT_NEW_GAME);
+	nm_set_item_menu(m[main_menu_item_index::load_existing_singleplayer_game], TXT_LOAD_GAME);
+#if DXX_USE_UDP
+	nm_set_item_menu(m[main_menu_item_index::open_multiplayer_submenu], TXT_MULTIPLAYER_);
+#endif
+
+	nm_set_item_menu(m[main_menu_item_index::open_options_submenu], TXT_OPTIONS_);
+	nm_set_item_menu(m[main_menu_item_index::create_new_pilot_profile], TXT_CHANGE_PILOTS);
+	nm_set_item_menu(m[main_menu_item_index::open_pick_recorded_demo_submenu], TXT_VIEW_DEMO);
+	nm_set_item_menu(m[main_menu_item_index::open_high_scores_dialog], TXT_VIEW_SCORES);
+	nm_set_item_menu(m[main_menu_item_index::open_credits_scroll_window], TXT_CREDITS);
+	nm_set_item_menu(m[main_menu_item_index::quit_program], TXT_QUIT);
+
+#ifndef RELEASE
+#if DXX_USE_EDITOR
+	nm_set_item_menu(m[main_menu_item_index::open_mine_editor_window], "  Editor");
+#endif
+	nm_set_item_menu(m[main_menu_item_index::open_coder_sandbox_submenu], "  SANDBOX");
+#endif
+}
+
+static void delete_player_single_player_saved_game(const char *const name, const unsigned i)
+{
+	char filename[PATH_MAX];
+	snprintf(filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.sg%x"), name, i);
+	PHYSFS_delete(filename);
+}
+
+static void delete_player_multi_player_saved_game(const char *const name, const unsigned i)
+{
+	char filename[PATH_MAX];
+	snprintf(filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.mg%x"), name, i);
+	PHYSFS_delete(filename);
+}
+
+static void delete_player_saved_games(const char *const name)
+{
+	for (const auto i : xrange(11u))
+	{
+		delete_player_single_player_saved_game(name, i);
+		delete_player_multi_player_saved_game(name, i);
+	}
+}
 
 template <typename T>
 using select_file_subfunction = window_event_result (*)(T *, const char *);
@@ -184,6 +251,25 @@ std::pair<std::chrono::seconds, bool> parse_human_readable_time(const char *cons
 	return {{}, false};
 }
 
+#if DXX_USE_SDLMIXER
+enum class select_dir_flag : uint8_t
+{
+	files_only,
+	directories_or_files,
+};
+
+__attribute_nonnull()
+static int select_file_recursive(const menu_title title, const std::array<char, PATH_MAX> &orig_path, const partial_range_t<const file_extension_t *> &ext_list, select_dir_flag select_dir, ntstring<PATH_MAX - 1> &userdata);
+
+static window_event_result get_absolute_path(ntstring<PATH_MAX - 1> &full_path, const char *rel_path)
+{
+	PHYSFSX_getRealPath(rel_path, full_path);
+	return window_event_result::close;
+}
+
+#define SELECT_SONG(t, s)	select_file_recursive(t, CGameCfg.CMMiscMusic[s], jukebox_exts, select_dir_flag::files_only, CGameCfg.CMMiscMusic[s])
+#endif
+
 }
 
 template <typename Rep, std::size_t S>
@@ -211,30 +297,37 @@ namespace dsx {
 
 namespace {
 
-int do_option(int select);
+struct main_menu : main_menu_items, newmenu
+{
+	main_menu(grs_canvas &src) :
+		newmenu(menu_title{""}, menu_subtitle{nullptr}, menu_filename{Menu_pcx_name}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src, draw_box_flag::none)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+static window_event_result do_new_game_menu();
 #ifndef RELEASE
 void do_sandbox_menu();
 #endif
 int select_demo();
+#if DXX_USE_UDP
+static void do_multi_player_menu();
+#endif
 
-}
-
-}
-
-namespace {
-
-static void delete_player_saved_games(const char * name);
-
-}
-
-__attribute_nonnull()
-static int select_file_recursive2(const char *title, const std::array<char, PATH_MAX> &orig_path, const partial_range_t<const file_extension_t *> &ext_list, int select_dir, select_file_subfunction<void> when_selected, void *userdata);
-
-template <typename T>
-__attribute_nonnull()
-static int select_file_recursive(const char *title, const std::array<char, PATH_MAX> &orig_path, const partial_range_t<const file_extension_t *> &ext_list, int select_dir, select_file_subfunction<T> when_selected, T *userdata)
+#if DXX_USE_UDP
+struct netgame_menu : netgame_menu_items, newmenu
 {
-	return select_file_recursive2(title, orig_path, ext_list, select_dir, reinterpret_cast<select_file_subfunction<void>>(when_selected), reinterpret_cast<void *>(userdata));
+	netgame_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{TXT_MULTIPLAYER}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+#endif
+
+}
+
 }
 
 // Hide all menus
@@ -307,49 +400,73 @@ constexpr char playername_allowed_chars[] = "azAZ09__--";
 
 }
 
+namespace dsx {
+
+namespace {
+
 static int MakeNewPlayerFile(int allow_abort)
 {
-	int x;
 	char filename[PATH_MAX];
 	auto text = InterfaceUniqueState.PilotName;
 
-try_again:
+	for (;;)
 	{
-		std::array<newmenu_item, 1> m{{
-			nm_item_input(text.buffer()),
-		}};
-	Newmenu_allowed_chars = playername_allowed_chars;
-		x = newmenu_do( NULL, TXT_ENTER_PILOT_NAME, m, unused_newmenu_subfunction, unused_newmenu_userdata );
+		using items_type = std::array<newmenu_item, 1>;
+		struct pilot_name_menu : items_type, passive_newmenu
+		{
+			pilot_name_menu(callsign_t &text) :
+				items_type{{
+					nm_item_input(text.buffer(), playername_allowed_chars),
+				}},
+				passive_newmenu(menu_title{nullptr}, menu_subtitle{TXT_ENTER_PILOT_NAME}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(*static_cast<items_type *>(this), 0), *grd_curcanv)
+			{
+			}
+		};
+		const auto x = run_blocking_newmenu<pilot_name_menu>(text);
+		const char *const name = text;
+		if (x < 0 || !*name)
+		{
+			if (allow_abort)
+				return 0;
+			/* If the entered name is empty, reject it and prompt again.
+			 */
+			continue;
+		}
+		text.lower();
+		snprintf(filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.plr"), name);
+		if (PHYSFSX_exists(filename, 0))
+		{
+			nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s '%s' %s", TXT_PLAYER, name, TXT_ALREADY_EXISTS);
+			continue;
+		}
+		break;
 	}
-	Newmenu_allowed_chars = NULL;
 
-	if ( x < 0 ) {
-		if ( allow_abort ) return 0;
-		goto try_again;
-	}
-
-	if (!*static_cast<const char *>(text))	//null string
-		goto try_again;
-
-	text.lower();
-
-	snprintf(filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.plr"), static_cast<const char *>(text) );
-
-	if (PHYSFSX_exists(filename,0))
-	{
-		nm_messagebox(NULL, 1, TXT_OK, "%s '%s' %s", TXT_PLAYER, static_cast<const char *>(text), TXT_ALREADY_EXISTS );
-		goto try_again;
-	}
-
-	if ( !new_player_config() )
-		goto try_again;			// They hit Esc during New player config
-
+	new_player_config();
 	InterfaceUniqueState.PilotName = text;
 	InterfaceUniqueState.update_window_title();
 	write_player_file();
 
 	return 1;
 }
+
+}
+
+}
+
+namespace {
+
+struct pilot_selection_listbox : listbox
+{
+	pilot_selection_listbox(int citem, unsigned nitems, std::unique_ptr<const char *[]> name_pointer_strings, PHYSFSX_uncounted_list &&physfs_list_strings, grs_canvas &canvas, uint8_t allow_abort_flag) :
+		listbox(citem, nitems, name_pointer_strings.get(), menu_title{TXT_SELECT_PILOT}, canvas, allow_abort_flag),
+		name_pointer_storage(std::move(name_pointer_strings)), physfs_list_storage(std::move(physfs_list_strings))
+	{
+	}
+	std::unique_ptr<const char *[]> name_pointer_storage;
+	PHYSFSX_uncounted_list physfs_list_storage;
+	virtual window_event_result callback_handler(const d_event &, window_event_result default_return_value) override;
+};
 
 static window_event_result player_menu_keycommand( listbox *lb,const d_event &event )
 {
@@ -362,7 +479,7 @@ static window_event_result player_menu_keycommand( listbox *lb,const d_event &ev
 			if (citem > 0)
 			{
 				int x = 1;
-				x = nm_messagebox( NULL, 2, TXT_YES, TXT_NO, "%s %s?", TXT_DELETE_PILOT, items[citem]+((items[citem][0]=='$')?1:0) );
+				x = nm_messagebox(menu_title{nullptr}, 2, TXT_YES, TXT_NO, "%s %s?", TXT_DELETE_PILOT, items[citem]+((items[citem][0]=='$')?1:0) );
 				if (x==0)	{
 					char plxfile[PATH_MAX], efffile[PATH_MAX], ngpfile[PATH_MAX];
 					int ret;
@@ -390,7 +507,7 @@ static window_event_result player_menu_keycommand( listbox *lb,const d_event &ev
 					}
 
 					if (ret)
-						nm_messagebox( NULL, 1, TXT_OK, "%s %s %s", TXT_COULDNT, TXT_DELETE_PILOT, items[citem]+((items[citem][0]=='$')?1:0) );
+						nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s %s", TXT_COULDNT, TXT_DELETE_PILOT, items[citem]+((items[citem][0]=='$')?1:0) );
 					else
 						listbox_delete_item(*lb, citem);
 				}
@@ -403,13 +520,12 @@ static window_event_result player_menu_keycommand( listbox *lb,const d_event &ev
 	return window_event_result::ignored;
 }
 
-static window_event_result player_menu_handler( listbox *lb,const d_event &event, char **list )
+window_event_result pilot_selection_listbox::callback_handler(const d_event &event, window_event_result)
 {
-	const char **items = listbox_get_items(*lb);
 	switch (event.type)
 	{
 		case EVENT_KEY_COMMAND:
-			return player_menu_keycommand(lb, event);
+			return player_menu_keycommand(this, event);
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
@@ -422,7 +538,8 @@ static window_event_result player_menu_handler( listbox *lb,const d_event &event
 			}
 			else
 			{
-				InterfaceUniqueState.PilotName.copy_lower(items[citem], strlen(items[citem]));
+				const auto p = item[citem];
+				InterfaceUniqueState.PilotName.copy_lower(p, strlen(p));
 				InterfaceUniqueState.update_window_title();
 			}
 			return window_event_result::close;
@@ -433,9 +550,6 @@ static window_event_result player_menu_handler( listbox *lb,const d_event &event
 				return window_event_result::handled;		// abort close!
 
 			WriteConfigFile();		// Update lastplr
-
-			PHYSFS_freeList(list);
-			d_free(items);
 			break;
 
 		default:
@@ -445,11 +559,17 @@ static window_event_result player_menu_handler( listbox *lb,const d_event &event
 	return window_event_result::ignored;
 }
 
+}
+
+namespace dsx {
+
+namespace {
+
 //Inputs the player's name, without putting up the background screen
 static void RegisterPlayer()
 {
 	static const std::array<file_extension_t, 1> types{{"plr"}};
-	int i = 0, NumItems;
+	int NumItems;
 	int citem = 0;
 	uint8_t allow_abort_flag = 1;
 
@@ -482,48 +602,48 @@ static void RegisterPlayer()
 	for (NumItems = 0; list[NumItems] != NULL; NumItems++) {}
 	NumItems++;		// for TXT_CREATE_NEW
 
-	RAIIdmem<const char *[]> m;
-	MALLOC(m, const char *[], NumItems);
-	if (m == NULL)
-		return;
+	auto m = std::make_unique<const char *[]>(NumItems);
 
-	m[i++] = TXT_CREATE_NEW;
+	/* Index of the first undefined element */
+	auto idx_next_string = 0u;
+	m[idx_next_string++] = TXT_CREATE_NEW;
+	const auto idx_first_player_string = idx_next_string;
 
 	range_for (const auto f, list)
 	{
-		char *p;
-
-		size_t lenf = strlen(f);
-		if (lenf > FILENAME_LEN-1 || lenf < 5) // sorry guys, can only have up to eight chars for the player name
-		{
-			NumItems--;
+		const auto p = strchr(f, '.');
+		if (!p)
+			/* This should not happen. */
 			continue;
-		}
-		m[i++] = f;
-		p = strchr(f, '.');
-		if (p)
-			*p = '\0';		// chop the .plr
+		if (f == p)
+			/* First character is '.', so there is no name. */
+			continue;
+		if (std::distance(f, p) > CALLSIGN_LEN)
+			/* Filename is too long to be a valid callsign. */
+			continue;
+		*p = 0;
+		m[idx_next_string++] = f;
 	}
 
-	if (NumItems <= 1) // so it seems all plr files we found were too long. funny. let's make a real player
+	if (idx_first_player_string == idx_next_string)
 	{
+		/* Every returned file was unacceptable. */
 		MakeNewPlayerFile(0);	// make a new player without showing listbox
 		return;
 	}
 
-	// Sort by name, except the <Create New Player> string
-	qsort(&m[1], NumItems - 1, sizeof(char *), string_array_sort_func);
-
-	for ( i=0; i<NumItems; i++ )
-		if (!d_stricmp(static_cast<const char *>(callsign), m[i]))
+	for (auto &&[mi, i] : enumerate(unchecked_partial_range(m.get(), idx_next_string)))
+		if (!d_stricmp(static_cast<const char *>(callsign), mi))
+		{
 			citem = i;
+			break;
+		}
 
-	newmenu_listbox1(TXT_SELECT_PILOT, NumItems, m.release(), allow_abort_flag, citem, player_menu_handler, list.release());
+	auto lb = window_create<pilot_selection_listbox>(citem, idx_next_string, std::move(m), std::move(list), grd_curscreen->sc_canvas, allow_abort_flag);
+	(void)lb;
 }
 
-namespace dsx {
-
-namespace {
+static void input_config();
 
 // Draw Copyright and Version strings
 static void draw_copyright()
@@ -538,11 +658,95 @@ static void draw_copyright()
 	gr_string(canvas, game_font, 0x8000, SHEIGHT - (line_spacing * 2), DESCENT_VERSION);
 }
 
-// ------------------------------------------------------------------------
-static int main_menu_handler(newmenu *menu,const d_event &event, int *menu_choice )
+//returns flag, true means quit menu
+int dispatch_menu_option(const main_menu_item_index select)
 {
-	newmenu_item *items = newmenu_get_items(menu);
+	switch (select)
+	{
+		case main_menu_item_index::start_new_singleplayer_game:
+			select_mission(mission_filter_mode::exclude_anarchy, menu_title{"New Game\n\nSelect mission"}, do_new_game_menu);
+			break;
+		case main_menu_item_index::open_pick_recorded_demo_submenu:
+			select_demo();
+			break;
+		case main_menu_item_index::load_existing_singleplayer_game:
+			state_restore_all(0, secret_restore::none, nullptr, blind_save::no);
+			break;
+#if DXX_USE_EDITOR
+		case main_menu_item_index::open_mine_editor_window:
+			if (!Current_mission)
+			{
+				create_new_mine();
+				SetPlayerFromCurseg();
+			}
 
+			hide_menus();
+			init_editor();
+			break;
+#endif
+		case main_menu_item_index::open_high_scores_dialog:
+			scores_view_menu();
+			break;
+		case main_menu_item_index::quit_program:
+#if DXX_USE_EDITOR
+			if (!SafetyCheck())
+				break;
+#endif
+			return 0;
+
+		case main_menu_item_index::create_new_pilot_profile:
+			RegisterPlayer();
+			break;
+
+#if DXX_USE_UDP
+		case main_menu_item_index::open_multiplayer_submenu:
+			do_multi_player_menu();
+			break;
+#endif
+		case main_menu_item_index::open_options_submenu:
+			do_options_menu();
+			break;
+		case main_menu_item_index::open_credits_scroll_window:
+			credits_show();
+			break;
+#ifndef RELEASE
+		case main_menu_item_index::open_coder_sandbox_submenu:
+			do_sandbox_menu();
+			break;
+#endif
+		default:
+			break;
+	}
+	return 1;		// stay in main menu unless quitting
+}
+
+#if DXX_USE_UDP
+int dispatch_menu_option(const netgame_menu_item_index select)
+{
+	switch (select)
+	{
+		case netgame_menu_item_index::start_new_multiplayer_game:
+			multi_protocol = MULTI_PROTO_UDP;
+			select_mission(mission_filter_mode::include_anarchy, menu_title{TXT_MULTI_MISSION}, net_udp_setup_game);
+			break;
+		case netgame_menu_item_index::join_multiplayer_game:
+			multi_protocol = MULTI_PROTO_UDP;
+			net_udp_manual_join_game();
+			break;
+		case netgame_menu_item_index::list_multiplayer_games:
+			multi_protocol = MULTI_PROTO_UDP;
+			net_udp_list_join_game();
+			break;
+		default:
+			break;
+	}
+	return 1;
+}
+#endif
+
+// ------------------------------------------------------------------------
+int main_menu::subfunction_handler(const d_event &event)
+{
 	switch (event.type)
 	{
 		case EVENT_WINDOW_CREATED:
@@ -608,12 +812,10 @@ static int main_menu_handler(newmenu *menu,const d_event &event, int *menu_choic
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
-			return do_option(menu_choice[citem]);
+			return dispatch_menu_option(static_cast<main_menu_item_index>(citem));
 		}
 
 		case EVENT_WINDOW_CLOSE:
-			d_free(menu_choice);
-			d_free(items);
 			break;
 
 		default:
@@ -621,165 +823,32 @@ static int main_menu_handler(newmenu *menu,const d_event &event, int *menu_choic
 	}
 
 	return 0;
+}
+
 }
 
 //	-----------------------------------------------------------------------------
 //	Create the main menu.
-static void create_main_menu(newmenu_item *m, int *menu_choice, unsigned *const callers_num_options)
-{
-	int num_options = 0;
-
-	#ifndef DEMO_ONLY
-	ADD_ITEM(TXT_NEW_GAME,MENU_NEW_GAME,KEY_N);
-
-	ADD_ITEM(TXT_LOAD_GAME,MENU_LOAD_GAME,KEY_L);
-#if DXX_USE_UDP
-	ADD_ITEM(TXT_MULTIPLAYER_,MENU_MULTIPLAYER,-1);
-#endif
-
-	ADD_ITEM(TXT_OPTIONS_, MENU_CONFIG, -1 );
-	ADD_ITEM(TXT_CHANGE_PILOTS,MENU_NEW_PLAYER,unused);
-	ADD_ITEM(TXT_VIEW_DEMO,MENU_DEMO_PLAY,0);
-	ADD_ITEM(TXT_VIEW_SCORES,MENU_VIEW_SCORES,KEY_V);
-	ADD_ITEM(TXT_CREDITS,MENU_SHOW_CREDITS,-1);
-	#endif
-	ADD_ITEM(TXT_QUIT,MENU_QUIT,KEY_Q);
-
-	#ifndef RELEASE
-	if (!(Game_mode & GM_MULTI ))	{
-#if DXX_USE_EDITOR
-		ADD_ITEM("  Editor", MENU_EDITOR, KEY_E);
-		#endif
-	}
-	ADD_ITEM("  SANDBOX", MENU_SANDBOX, -1);
-	#endif
-
-	*callers_num_options = num_options;
-}
-
-}
-
 //returns number of item chosen
 int DoMenu()
 {
-	int *menu_choice;
-	newmenu_item *m;
-	unsigned num_options = 0;
-
-	CALLOC(menu_choice, int, 25);
-	if (!menu_choice)
-		return -1;
-	CALLOC(m, newmenu_item, 25);
-	if (!m)
-	{
-		d_free(menu_choice);
-		return -1;
-	}
-
-	create_main_menu(m, menu_choice, &num_options); // may have to change, eg, maybe selected pilot and no save games.
-
-	newmenu_do3("", nullptr, unchecked_partial_range(m, num_options), main_menu_handler, menu_choice, 0, Menu_pcx_name);
-
+	auto menu = window_create<main_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 	return 0;
 }
 
 namespace {
 
-//returns flag, true means quit menu
-int do_option ( int select)
+struct demo_selection_listbox : listbox
 {
-	switch (select) {
-		case MENU_NEW_GAME:
-			select_mission(mission_filter_mode::exclude_anarchy, "New Game\n\nSelect mission", do_new_game_menu);
-			break;
-		case MENU_GAME:
-			break;
-		case MENU_DEMO_PLAY:
-			select_demo();
-			break;
-		case MENU_LOAD_GAME:
-			state_restore_all(0, secret_restore::none, nullptr, blind_save::no);
-			break;
-#if DXX_USE_EDITOR
-		case MENU_EDITOR:
-			if (!Current_mission)
-			{
-				create_new_mine();
-				SetPlayerFromCurseg();
-			}
-
-			hide_menus();
-			init_editor();
-			break;
-		#endif
-		case MENU_VIEW_SCORES:
-			scores_view_menu();
-			break;
-		case MENU_QUIT:
-#if DXX_USE_EDITOR
-			if (! SafetyCheck()) break;
-			#endif
-			return 0;
-
-		case MENU_NEW_PLAYER:
-			RegisterPlayer();
-			break;
-
-#if DXX_USE_UDP
-		case MENU_START_UDP_NETGAME:
-			multi_protocol = MULTI_PROTO_UDP;
-			select_mission(mission_filter_mode::include_anarchy, TXT_MULTI_MISSION, net_udp_setup_game);
-			break;
-		case MENU_JOIN_MANUAL_UDP_NETGAME:
-			multi_protocol = MULTI_PROTO_UDP;
-			net_udp_manual_join_game();
-			break;
-		case MENU_JOIN_LIST_UDP_NETGAME:
-			multi_protocol = MULTI_PROTO_UDP;
-			net_udp_list_join_game();
-			break;
-#endif
-#if DXX_USE_UDP
-		case MENU_MULTIPLAYER:
-			do_multi_player_menu();
-			break;
-#endif
-		case MENU_CONFIG:
-			do_options_menu();
-			break;
-		case MENU_SHOW_CREDITS:
-			credits_show();
-			break;
-#ifndef RELEASE
-		case MENU_SANDBOX:
-			do_sandbox_menu();
-			break;
-#endif
-		default:
-			Error("Unknown option %d in do_option",select);
-			break;
-	}
-
-	return 1;		// stay in main menu unless quitting
-}
-
-}
-
-}
-
-namespace {
-
-static void delete_player_saved_games(const char * name)
-{
-	char filename[PATH_MAX];
-	for (unsigned i = 0; i < 11; ++i)
+	demo_selection_listbox(unsigned nitems, PHYSFSX_uncounted_list &&physfs_list_strings, grs_canvas &canvas) :
+		listbox(0, nitems, const_cast<const char **>(physfs_list_strings.get()), menu_title{TXT_SELECT_DEMO}, canvas, 1),
+		physfs_list_storage(std::move(physfs_list_strings))
 	{
-		snprintf( filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.sg%x"), name, i );
-		PHYSFS_delete(filename);
-		snprintf( filename, sizeof(filename), PLAYER_DIRECTORY_STRING("%s.mg%x"), name, i );
-		PHYSFS_delete(filename);
 	}
-}
+	PHYSFSX_uncounted_list physfs_list_storage;
+	virtual window_event_result callback_handler(const d_event &, window_event_result default_return_value) override;
+};
 
 static window_event_result demo_menu_keycommand( listbox *lb,const d_event &event )
 {
@@ -792,7 +861,7 @@ static window_event_result demo_menu_keycommand( listbox *lb,const d_event &even
 			if (citem >= 0)
 			{
 				int x = 1;
-				x = nm_messagebox( NULL, 2, TXT_YES, TXT_NO, "%s %s?", TXT_DELETE_DEMO, items[citem]+((items[citem][0]=='$')?1:0) );
+				x = nm_messagebox(menu_title{nullptr}, 2, TXT_YES, TXT_NO, "%s %s?", TXT_DELETE_DEMO, items[citem]+((items[citem][0]=='$')?1:0) );
 				if (x==0)
 				{
 					int ret;
@@ -804,7 +873,7 @@ static window_event_result demo_menu_keycommand( listbox *lb,const d_event &even
 					ret = !PHYSFS_delete(name);
 
 					if (ret)
-						nm_messagebox( NULL, 1, TXT_OK, "%s %s %s", TXT_COULDNT, TXT_DELETE_DEMO, items[citem]+((items[citem][0]=='$')?1:0) );
+						nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s %s", TXT_COULDNT, TXT_DELETE_DEMO, items[citem]+((items[citem][0]=='$')?1:0) );
 					else
 						listbox_delete_item(*lb, citem);
 				}
@@ -820,7 +889,7 @@ static window_event_result demo_menu_keycommand( listbox *lb,const d_event &even
 
 				// Get backup name
 				change_filename_extension(bakname, items[citem]+((items[citem][0]=='$')?1:0), DEMO_BACKUP_EXT);
-				x = nm_messagebox( NULL, 2, TXT_YES, TXT_NO,	"Are you sure you want to\n"
+				x = nm_messagebox(menu_title{nullptr}, 2, TXT_YES, TXT_NO,	"Are you sure you want to\n"
 								  "swap the endianness of\n"
 								  "%s? If the file is\n"
 								  "already endian native, D1X\n"
@@ -833,32 +902,24 @@ static window_event_result demo_menu_keycommand( listbox *lb,const d_event &even
 			}
 			break;
 	}
-
 	return window_event_result::ignored;
 }
 
-}
-
-namespace dsx {
-
-namespace {
-
-static window_event_result demo_menu_handler(listbox *lb, const d_event &event, char **items)
+window_event_result demo_selection_listbox::callback_handler(const d_event &event, window_event_result)
 {
 	switch (event.type)
 	{
 		case EVENT_KEY_COMMAND:
-			return demo_menu_keycommand(lb, event);
+			return demo_menu_keycommand(this, event);
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
 			if (citem < 0)
 				return window_event_result::ignored;		// shouldn't happen
-			newdemo_start_playback(items[citem]);
+			newdemo_start_playback(item[citem]);
 			return window_event_result::handled;		// stay in demo selector
 		}
 		case EVENT_WINDOW_CLOSE:
-			PHYSFS_freeList(items);
 			break;
 		default:
 			break;
@@ -866,7 +927,7 @@ static window_event_result demo_menu_handler(listbox *lb, const d_event &event, 
 	return window_event_result::ignored;
 }
 
-int select_demo(void)
+int select_demo()
 {
 	int NumItems;
 
@@ -875,33 +936,36 @@ int select_demo(void)
 		return 0;	// memory error
 	if (!list[0])
 	{
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s\n%s", TXT_NO_DEMO_FILES, TXT_USE_F5, TXT_TO_CREATE_ONE);
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s\n%s", TXT_NO_DEMO_FILES, TXT_USE_F5, TXT_TO_CREATE_ONE);
 		return 0;
 	}
 
 	for (NumItems = 0; list[NumItems] != NULL; NumItems++) {}
 
-	// Sort by name
-	qsort(list.get(), NumItems, sizeof(char *), string_array_sort_func);
-
-	auto clist = const_cast<const char **>(list.get());
-	newmenu_listbox1(TXT_SELECT_DEMO, NumItems, clist, 1, 0, demo_menu_handler, list.release());
-
+	auto lb = window_create<demo_selection_listbox>(NumItems, std::move(list), grd_curscreen->sc_canvas);
+	(void)lb;
 	return 1;
 }
 
 static int do_difficulty_menu()
 {
-	std::array<newmenu_item, NDL> m{{
-		nm_item_menu(MENU_DIFFICULTY_TEXT(0)),
-		nm_item_menu(MENU_DIFFICULTY_TEXT(1)),
-		nm_item_menu(MENU_DIFFICULTY_TEXT(2)),
-		nm_item_menu(MENU_DIFFICULTY_TEXT(3)),
-		nm_item_menu(MENU_DIFFICULTY_TEXT(4)),
-	}};
-
+	using items_type = std::array<newmenu_item, NDL>;
+	struct difficulty_prompt_menu : items_type, passive_newmenu
+	{
+		difficulty_prompt_menu(const unsigned Difficulty_level) :
+			items_type{{
+				nm_item_menu(MENU_DIFFICULTY_TEXT(Difficulty_0)),
+				nm_item_menu(MENU_DIFFICULTY_TEXT(Difficulty_1)),
+				nm_item_menu(MENU_DIFFICULTY_TEXT(Difficulty_2)),
+				nm_item_menu(MENU_DIFFICULTY_TEXT(Difficulty_3)),
+				nm_item_menu(MENU_DIFFICULTY_TEXT(Difficulty_4)),
+			}},
+			passive_newmenu(menu_title{nullptr}, menu_subtitle{TXT_DIFFICULTY_LEVEL}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(*static_cast<items_type *>(this), Difficulty_level), *grd_curcanv)
+		{
+		}
+	};
 	auto &Difficulty_level = GameUniqueState.Difficulty_level;
-	const unsigned s = newmenu_do1(nullptr, TXT_DIFFICULTY_LEVEL, m, unused_newmenu_subfunction, unused_newmenu_userdata, Difficulty_level);
+	const unsigned s = run_blocking_newmenu<difficulty_prompt_menu>(Difficulty_level);
 
 	if (s <= Difficulty_4)
 	{
@@ -915,10 +979,6 @@ static int do_difficulty_menu()
 		return 1;
 	}
 	return 0;
-}
-
-}
-
 }
 
 window_event_result do_new_game_menu()
@@ -941,32 +1001,47 @@ window_event_result do_new_game_menu()
 		;
 	if (allowed_highest_level > 1)
 	{
-		char info_text[128];
+		struct items_type
+		{
+			std::array<char, 8> num_text{"1"};
+			std::array<char, 128> info_text;
+			std::array<newmenu_item, 2> m;
+			items_type() :
+				m{{
+					nm_item_text(info_text.data()),
+					nm_item_input(num_text),
+				}}
+			{
+			}
+		};
+		items_type menu_items;
 
-		snprintf(info_text, sizeof(info_text), "This mission has\n%u levels.\n\n%s %d." DXX_START_ANY_LEVEL_FORMAT, static_cast<unsigned>(Last_level), TXT_START_ANY_LEVEL, allowed_highest_level DXX_START_ANY_LEVEL_ARGS);
+		snprintf(menu_items.info_text.data(), menu_items.info_text.size(), "This mission has\n%u levels.\n\n%s %d." DXX_START_ANY_LEVEL_FORMAT, static_cast<unsigned>(Last_level), TXT_START_ANY_LEVEL, allowed_highest_level DXX_START_ANY_LEVEL_ARGS);
 #undef DXX_START_ANY_LEVEL_ARGS
 #undef DXX_START_ANY_LEVEL_FORMAT
 		for (;;)
 		{
-			std::array<char, 10> num_text{"1"};
-			std::array<newmenu_item, 2> m{{
-				nm_item_text(info_text),
-				nm_item_input(num_text),
-			}};
-			const int choice = newmenu_do(nullptr, TXT_SELECT_START_LEV, m, unused_newmenu_subfunction, unused_newmenu_userdata);
+			struct select_start_level_menu : passive_newmenu
+			{
+				select_start_level_menu(items_type &i) :
+					passive_newmenu(menu_title{nullptr}, menu_subtitle{TXT_SELECT_START_LEV}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(i.m, 1), *grd_curcanv)
+				{
+				}
+			};
+			const int choice = run_blocking_newmenu<select_start_level_menu>(menu_items);
 
-			if (choice == -1 || !num_text[0])
+			if (choice == -1 || !menu_items.num_text[0])
 				return window_event_result::handled;
 
 			char *p = nullptr;
-			new_level_num = strtol(num_text.data(), &p, 10);
+			new_level_num = strtol(menu_items.num_text.data(), &p, 10);
 
 			if (*p || new_level_num <= 0 || new_level_num > Last_level)
 			{
-				nm_messagebox(TXT_INVALID_LEVEL, 1, TXT_OK, "You must enter a\npositive level number\nless than or\nequal to %u.\n", static_cast<unsigned>(Last_level));
+				nm_messagebox(menu_title{TXT_INVALID_LEVEL}, 1, TXT_OK, "You must enter a\npositive level number\nless than or\nequal to %u.\n", static_cast<unsigned>(Last_level));
 			}
 			else if (new_level_num > allowed_highest_level)
-				nm_messagebox(TXT_INVALID_LEVEL, 1, TXT_OK, "You have beaten level %d.\n\nYou cannot start on level %d.", allowed_highest_level, new_level_num);
+				nm_messagebox(menu_title{TXT_INVALID_LEVEL}, 1, TXT_OK, "You have beaten level %d.\n\nYou cannot start on level %d.", allowed_highest_level, new_level_num);
 			else
 				break;
 		}
@@ -982,14 +1057,18 @@ window_event_result do_new_game_menu()
 	return window_event_result::close;	// exit mission listbox
 }
 
+}
+
+}
+
 static void do_sound_menu();
-static void input_config();
-static void change_res();
 namespace dsx {
+namespace {
 static void hud_config();
 static void graphics_config();
-}
 static void gameplay_config();
+}
+}
 
 #define DXX_OPTIONS_MENU(VERB)	\
 	DXX_MENUITEM(VERB, MENU, "Sound & music...", sfx)	\
@@ -1013,9 +1092,16 @@ public:
 	}
 };
 
-}
+struct options_menu : options_menu_items, newmenu
+{
+	options_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{TXT_OPTIONS}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
 
-static int options_menuset(newmenu *, const d_event &event, options_menu_items *items)
+int options_menu::subfunction_handler(const d_event &event)
 {
 	switch (event.type)
 	{
@@ -1044,11 +1130,8 @@ static int options_menuset(newmenu *, const d_event &event, options_menu_items *
 		}
 
 		case EVENT_WINDOW_CLOSE:
-		{
-			std::default_delete<options_menu_items>()(items);
 			write_player_file();
 			break;
-		}
 
 		default:
 			break;
@@ -1064,125 +1147,209 @@ static int gcd(int a, int b)
 	return gcd(b, a%b);
 }
 
-void change_res()
+struct screen_resolution_menu_items
 {
-	newmenu_item m[50+8];
-	std::array<char, 12> crestext, casptext;
-
-	int citem = -1;
-	unsigned mc = 0;
-
-#if SDL_MAJOR_VERSION == 1
-	std::array<screen_mode, 50> modes;
-	const auto num_presets = gr_list_modes(modes);
-	std::array<std::array<char, 12>, 50> restext;
-
-	range_for (auto &i, partial_const_range(modes, num_presets))
+	enum
 	{
-		const auto &&sm_w = SM_W(i);
-		const auto &&sm_h = SM_H(i);
-		snprintf(restext[mc].data(), restext[mc].size(), "%ix%i", sm_w, sm_h);
-		const auto checked = (citem == -1 && Game_screen_mode == i && GameCfg.AspectY == sm_w / gcd(sm_w, sm_h) && GameCfg.AspectX == sm_h / gcd(sm_w, sm_h));
-		if (checked)
-			citem = mc;
-		nm_set_item_radio(m[mc], restext[mc].data(), checked, 0);
-		mc++;
-	}
-
-	nm_set_item_text(m[mc], ""); mc++; // little space for overview
-	// the fields for custom resolution and aspect
-	const auto opt_cval = mc;
-#endif
-	nm_set_item_radio(m[mc], "use custom values", (citem == -1), 0); mc++;
-	nm_set_item_text(m[mc], "resolution:"); mc++;
-	snprintf(crestext.data(), crestext.size(), "%ix%i", SM_W(Game_screen_mode), SM_H(Game_screen_mode));
-	nm_set_item_input(m[mc], crestext);
-	mc++;
-	nm_set_item_text(m[mc], "aspect:"); mc++;
-	snprintf(casptext.data(), casptext.size(), "%ix%i", GameCfg.AspectY, GameCfg.AspectX);
-	nm_set_item_input(m[mc], casptext);
-	mc++;
-	nm_set_item_text(m[mc], ""); mc++; // little space for overview
-	// fullscreen
+		grp_resolution = 0,
+	};
+	enum class ni_index : unsigned;
+	enum class fixed_field_index : unsigned
+	{
 #if SDL_MAJOR_VERSION == 1
-	const auto opt_fullscr = mc;
-	nm_set_item_checkbox(m[mc], "Fullscreen", gr_check_fullscreen());
-	mc++;
+		/* SDL1 has a variable number of records before this line, so
+		 * this line exists to separate them from the next lines.
+		 *
+		 * SDL2 has no records before the custom values line, so no
+		 * separator is needed.
+		 */
+		opt_blank_custom_values,
 #endif
+		opt_radio_custom_values,
+		opt_label_resolution,
+		opt_input_resolution,
+		opt_label_aspect,
+		opt_input_aspect,
+		opt_blank_fullscreen,
+		opt_checkbox_fullscreen,
+		/* Must be last.  This is not a real element, and access to
+		 * array[end] is undefined.
+		 */
+		end,
+	};
+#if SDL_MAJOR_VERSION == 1
+	static constexpr std::size_t maximum_preset_modes = 50;
+	std::array<screen_mode, maximum_preset_modes> modes;
+	std::array<std::array<char, 12>, maximum_preset_modes> restext;
+	const unsigned num_presets;
+	ni_index convert_fixed_field_to_ni(fixed_field_index i) const
+	{
+		return static_cast<ni_index>(static_cast<unsigned>(i) + num_presets);
+	}
+#elif SDL_MAJOR_VERSION == 2
+	static constexpr std::size_t maximum_preset_modes = 0;
+	static constexpr ni_index convert_fixed_field_to_ni(fixed_field_index i)
+	{
+		return static_cast<ni_index>(i);
+	}
+#endif
+	std::array<char, 12> crestext, casptext;
+	enumerated_array<newmenu_item, maximum_preset_modes + static_cast<unsigned>(fixed_field_index::end), ni_index> m;
+	screen_resolution_menu_items();
+};
 
-	// create the menu
-	newmenu_do1(nullptr, "Screen Resolution", unchecked_partial_range(m, mc), unused_newmenu_subfunction, unused_newmenu_userdata, 0);
+screen_resolution_menu_items::screen_resolution_menu_items()
+#if SDL_MAJOR_VERSION == 1
+	: num_presets(gr_list_modes(modes))
+#endif
+{
+	int citem = -1;
+#if SDL_MAJOR_VERSION == 1
+	for (auto &&[idx, mode, resolution_text, menuitem] : enumerate(zip(partial_const_range(modes, num_presets), restext, m)))
+	{
+		const auto &&sm_w = SM_W(mode);
+		const auto &&sm_h = SM_H(mode);
+		snprintf(resolution_text.data(), resolution_text.size(), "%ix%i", sm_w, sm_h);
+		/* At most one entry can be checked.  When the correct entry is
+		 * found, update citem so that no later entries can be checked.
+		 */
+		const auto checked = (citem == -1 && Game_screen_mode == mode && GameCfg.AspectY == sm_w / gcd(sm_w, sm_h) && GameCfg.AspectX == sm_h / gcd(sm_w, sm_h));
+		if (checked)
+			citem = idx;
+		nm_set_item_radio(menuitem, resolution_text.data(), checked, grp_resolution);
+	}
+	/* Leave a blank line for visual separation */
+	nm_set_item_text(m[convert_fixed_field_to_ni(fixed_field_index::opt_blank_custom_values)], "");
+#endif
+	nm_set_item_radio(m[convert_fixed_field_to_ni(fixed_field_index::opt_radio_custom_values)], "Use custom values", (citem == -1), grp_resolution);
+	nm_set_item_text(m[convert_fixed_field_to_ni(fixed_field_index::opt_label_resolution)], "resolution:");
+	snprintf(crestext.data(), crestext.size(), "%ix%i", SM_W(Game_screen_mode), SM_H(Game_screen_mode));
+	nm_set_item_input(m[convert_fixed_field_to_ni(fixed_field_index::opt_input_resolution)], crestext);
+	nm_set_item_text(m[convert_fixed_field_to_ni(fixed_field_index::opt_label_aspect)], "aspect:");
+	snprintf(casptext.data(), casptext.size(), "%ix%i", GameCfg.AspectY, GameCfg.AspectX);
+	nm_set_item_input(m[convert_fixed_field_to_ni(fixed_field_index::opt_input_aspect)], casptext);
+	nm_set_item_text(m[convert_fixed_field_to_ni(fixed_field_index::opt_blank_fullscreen)], "");
+	nm_set_item_checkbox(m[convert_fixed_field_to_ni(fixed_field_index::opt_checkbox_fullscreen)], "Fullscreen", gr_check_fullscreen());
+}
 
-	// menu is done, now do what we need to do
+struct screen_resolution_menu : screen_resolution_menu_items, passive_newmenu
+{
+	screen_resolution_menu() :
+		passive_newmenu(menu_title{nullptr}, menu_subtitle{"Screen Resolution"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(partial_range(m, static_cast<std::size_t>(convert_fixed_field_to_ni(fixed_field_index::end))), 0), *grd_curcanv)
+	{
+	}
+	virtual window_event_result event_handler(const d_event &event) override;
+	void handle_close_event() const;
+#if SDL_MAJOR_VERSION == 1
+	void check_apply_preset_resolution() const;
+#endif
+	void apply_custom_resolution() const;
+	void apply_resolution(screen_mode) const;
+};
 
+window_event_result screen_resolution_menu::event_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			handle_close_event();
+			return window_event_result::ignored;
+		default:
+			return newmenu::event_handler(event);
+	}
+}
+
+void screen_resolution_menu::handle_close_event() const
+{
 	// check which resolution field was selected
 #if SDL_MAJOR_VERSION == 1
-	unsigned i;
-	for (i = 0; i <= mc; i++)
-		if (m[i].type == NM_TYPE_RADIO && m[i].radio().group == 0 && m[i].value == 1)
-			break;
-
-	// now check for fullscreen toggle and apply if necessary
-	if (m[opt_fullscr].value != gr_check_fullscreen())
+	if (m[convert_fixed_field_to_ni(fixed_field_index::opt_checkbox_fullscreen)].value != gr_check_fullscreen())
 		gr_toggle_fullscreen();
-#endif
-
-	screen_mode new_mode;
-#if SDL_MAJOR_VERSION == 1
-	if (i == opt_cval) // set custom resolution and aspect
+	if (!m[convert_fixed_field_to_ni(fixed_field_index::opt_radio_custom_values)].value)
+	{
+		/* If the radio item for "Use custom resolution" is not set,
+		 * then one of the items for a preset resolution must be set.
+		 * Find the chosen item and apply it.
+		 */
+		check_apply_preset_resolution();
+	}
+	else
 #endif
 	{
-		char revert[32];
-		char *x;
-		const char *errstr;
-		unsigned long w = strtoul(crestext.data(), &x, 10), h;
-		screen_mode cmode;
-		if (
-			((x == crestext.data() || *x != 'x' || !x[1] || ((h = strtoul(x + 1, &x, 10)), *x)) && (errstr = "Entered resolution must\nbe formatted as\n<number>x<number>", true)) ||
-			((w < 320 || h < 200) && (errstr = "Entered resolution must\nbe at least 320x200", true))
-			)
-		{
-			cmode = Game_screen_mode;
-			w = SM_W(cmode);
-			h = SM_H(cmode);
-			snprintf(revert, sizeof(revert), "Revert to %lux%lu", w, h);
-			nm_messagebox_str(TXT_WARNING, revert, errstr);
-		}
-		else
-		{
-			cmode.width = w;
-			cmode.height = h;
-		}
-		auto casp = cmode;
-		w = strtoul(casptext.data(), &x, 10);
-		if (
-			((x == casptext.data() || *x != 'x' || !x[1] || ((h = strtoul(x + 1, &x, 10)), *x)) && (errstr = "Entered aspect ratio must\nbe formatted as\n<number>x<number>", true)) ||
-			((!w || !h) && (errstr = "Entered aspect ratio must\nnot use 0 term", true))
-			)
-		{
-			nm_messagebox_str(TXT_WARNING, "IGNORE ASPECT RATIO", errstr);
-		}
-		else
-		{
-			// we even have a custom aspect set up
-			casp.width = w;
-			casp.height = h;
-		}
-		const auto g = gcd(SM_W(casp), SM_H(casp));
-		GameCfg.AspectY = SM_W(casp) / g;
-		GameCfg.AspectX = SM_H(casp) / g;
-		new_mode = cmode;
+		apply_custom_resolution();
 	}
+}
+
 #if SDL_MAJOR_VERSION == 1
-	else if (i < num_presets) // set preset resolution
-	{
-		new_mode = modes[i];
-		const auto g = gcd(SM_W(new_mode), SM_H(new_mode));
-		GameCfg.AspectY = SM_W(new_mode) / g;
-		GameCfg.AspectX = SM_H(new_mode) / g;
-	}
+void screen_resolution_menu::check_apply_preset_resolution() const
+{
+	const auto r = zip(partial_range(modes, num_presets), m);
+	const auto predicate = [](const auto &v) {
+		auto &ni = std::get<1>(v);
+		if (ni.type != nm_type::radio)
+			return 0;
+		auto &radio = ni.radio();
+		if (radio.group != grp_resolution)
+			return 0;
+		return ni.value;
+	};
+	const auto i = std::find_if(r.begin(), r.end(), predicate);
+	if (i == r.end())
+		return;
+	const auto requested_mode = std::get<0>(*i);
+	const auto g = gcd(SM_W(requested_mode), SM_H(requested_mode));
+	GameCfg.AspectY = SM_W(requested_mode) / g;
+	GameCfg.AspectX = SM_H(requested_mode) / g;
+	apply_resolution(requested_mode);
+}
 #endif
 
+void screen_resolution_menu::apply_custom_resolution() const
+{
+	char revert[32];
+	char *x;
+	const char *errstr;
+	const auto resolution_width = strtoul(crestext.data(), &x, 10);
+	unsigned long resolution_height;
+	screen_mode cmode;
+	if (
+		((x == crestext.data() || *x != 'x' || !x[1] || ((resolution_height = strtoul(x + 1, &x, 10)), *x)) && (errstr = "Entered resolution must\nbe formatted as\n<number>x<number>", true)) ||
+		((resolution_width < 320 || resolution_height < 200) && (errstr = "Entered resolution must\nbe at least 320x200", true))
+	)
+	{
+		cmode = Game_screen_mode;
+		snprintf(revert, sizeof(revert), "Revert to %ix%i", SM_W(cmode), SM_H(cmode));
+		nm_messagebox_str(menu_title{TXT_WARNING}, revert, menu_subtitle{errstr});
+	}
+	else
+	{
+		cmode.width = resolution_width;
+		cmode.height = resolution_height;
+	}
+	screen_mode casp;
+	const auto aspect_width = strtoul(casptext.data(), &x, 10);
+	unsigned long aspect_height;
+	if (
+		((x == casptext.data() || *x != 'x' || !x[1] || ((aspect_height = strtoul(x + 1, &x, 10)), *x)) && (errstr = "Entered aspect ratio must\nbe formatted as\n<number>x<number>", true)) ||
+		((!aspect_width || !aspect_height) && (errstr = "Entered aspect ratio must\nnot use 0 term", true))
+	)
+	{
+		casp = cmode;
+		nm_messagebox_str(menu_title{TXT_WARNING}, "IGNORE ASPECT RATIO", menu_subtitle{errstr});
+	}
+	else
+	{
+		casp.width = aspect_width;
+		casp.height = aspect_height;
+	}
+	const auto g = gcd(SM_W(casp), SM_H(casp));
+	GameCfg.AspectY = SM_W(casp) / g;
+	GameCfg.AspectX = SM_H(casp) / g;
+	apply_resolution(cmode);
+}
+
+void screen_resolution_menu::apply_resolution(const screen_mode new_mode) const
+{
 	// clean up and apply everything
 	newmenu_free_background();
 	set_screen_mode(SCREEN_MENU);
@@ -1205,8 +1372,30 @@ void change_res()
 	game_init_render_buffers(SM_W(Game_screen_mode), SM_H(Game_screen_mode));
 }
 
-static void input_config_keyboard()
+template <typename PMF>
+struct copy_sensitivity
 {
+	const std::size_t offset;
+	const PMF pmf;
+	copy_sensitivity(std::size_t offset, const PMF pmf) :
+		offset(offset), pmf(pmf)
+	{
+	}
+};
+
+template <typename XRange, typename MenuItems, typename... CopyParameters>
+void copy_sensitivity_from_menu_to_cfg2(XRange &&r, const MenuItems &menuitems, const CopyParameters ... cn)
+{
+	for (const auto i : r)
+		(((PlayerCfg.*(cn.pmf))[i] = menuitems[1 + i + cn.offset].value), ...);
+}
+
+template <typename MenuItems, typename CopyParameter0, typename... CopyParameterN>
+void copy_sensitivity_from_menu_to_cfg(const MenuItems &menuitems, const CopyParameter0 c0, const CopyParameterN ... cn)
+{
+	copy_sensitivity_from_menu_to_cfg2(xrange(std::size(PlayerCfg.*(c0.pmf))), menuitems, c0, cn...);
+}
+
 #define DXX_INPUT_SENSITIVITY(VERB,OPT,VAL)	\
 	DXX_MENUITEM(VERB, SLIDER, TXT_TURN_LR, opt_##OPT##_turn_lr, VAL[0], 0, 16)	\
 	DXX_MENUITEM(VERB, SLIDER, TXT_PITCH_UD, opt_##OPT##_pitch_ud, VAL[1], 0, 16)	\
@@ -1218,10 +1407,10 @@ static void input_config_keyboard()
 	DXX_MENUITEM(VERB, TEXT, "Keyboard Sensitivity:", opt_label_kb)	\
 	DXX_INPUT_SENSITIVITY(VERB,kb,PlayerCfg.KeyboardSens)	             \
 
+namespace keyboard_sensitivity {
 
-	class menu_items
-	{
-	public:
+struct menu_items
+{
 		enum
 		{
 			DXX_INPUT_CONFIG_MENU(ENUM)
@@ -1231,23 +1420,41 @@ static void input_config_keyboard()
 		{
 			DXX_INPUT_CONFIG_MENU(ADD);
 		}
-	};
-#undef DXX_INPUT_CONFIG_MENU
-#undef DXX_INPUT_SENSITIVITY
-	menu_items items;
-	newmenu_do1(nullptr, "Keyboard Calibration", items.m, unused_newmenu_subfunction, unused_newmenu_userdata, 1);
+};
 
-	constexpr uint_fast32_t keysens = items.opt_label_kb + 1;
-	const auto &m = items.m;
-
-	range_for (const unsigned i, xrange(5u))
+struct menu : menu_items, newmenu
+{
+	menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Keyboard Calibration"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 1), src)
 	{
-		PlayerCfg.KeyboardSens[i] = m[keysens+i].value;
 	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int menu::subfunction_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			copy_sensitivity_from_menu_to_cfg(m, copy_sensitivity(opt_label_kb, &player_config::KeyboardSens));
+			break;
+		default:
+			break;
+	}
+	return 0;
 }
 
-static void input_config_mouse()
+}
+
+#undef DXX_INPUT_CONFIG_MENU
+#undef DXX_INPUT_SENSITIVITY
+
+static void input_config_keyboard()
 {
+	auto menu = window_create<keyboard_sensitivity::menu>(grd_curscreen->sc_canvas);
+	(void)menu;
+}
+
 #define DXX_INPUT_SENSITIVITY(VERB,OPT,VAL)	                           \
 	DXX_MENUITEM(VERB, SLIDER, TXT_TURN_LR, opt_##OPT##_turn_lr, VAL[0], 0, 16)	\
 	DXX_MENUITEM(VERB, SLIDER, TXT_PITCH_UD, opt_##OPT##_pitch_ud, VAL[1], 0, 16)	\
@@ -1269,7 +1476,9 @@ static void input_config_mouse()
 	DXX_MENUITEM(VERB, TEXT, "Mouse FlightSim Deadzone:", opt_label_mfsd)	\
 	DXX_MENUITEM(VERB, SLIDER, "X/Y", opt_mfsd_deadzone, PlayerCfg.MouseFSDead, 0, 16)	\
 
-	class menu_items
+namespace mouse_sensitivity {
+
+	struct menu_items
 	{
 	public:
 		enum
@@ -1282,27 +1491,45 @@ static void input_config_mouse()
 			DXX_INPUT_CONFIG_MENU(ADD);
 		}
 	};
-#undef DXX_INPUT_CONFIG_MENU
-	menu_items items;
-	newmenu_do1(nullptr, "Mouse Calibration", items.m, unused_newmenu_subfunction, unused_newmenu_userdata, 1);
 
-	constexpr uint_fast32_t mousesens = items.opt_label_ms + 1;
-    constexpr uint_fast32_t mouseoverrun = items.opt_label_mo + 1;
-	const auto &m = items.m;
-
-	for (unsigned i = 0; i <= 5; i++)
+struct menu : menu_items, newmenu
+{
+	menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Mouse Calibration"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 1), src)
 	{
-
-		PlayerCfg.MouseSens[i] = m[mousesens+i].value;
-        PlayerCfg.MouseOverrun[i] = m[mouseoverrun+i].value;
 	}
-	constexpr uint_fast32_t mousefsdead = items.opt_mfsd_deadzone;
-	PlayerCfg.MouseFSDead = m[mousefsdead].value;
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int menu::subfunction_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			PlayerCfg.MouseFSDead = m[opt_mfsd_deadzone].value;
+			copy_sensitivity_from_menu_to_cfg(m,
+				copy_sensitivity(opt_label_ms, &player_config::MouseSens),
+				copy_sensitivity(opt_label_mo, &player_config::MouseOverrun)
+			);
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
+
+}
+#undef DXX_INPUT_CONFIG_MENU
+
+static void input_config_mouse()
+{
+	auto menu = window_create<mouse_sensitivity::menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #if DXX_MAX_AXES_PER_JOYSTICK
-static void input_config_joystick()
-{
+namespace joystick_sensitivity {
+
 #define DXX_INPUT_CONFIG_MENU(VERB)	                                   \
 	DXX_MENUITEM(VERB, TEXT, "Joystick Sensitivity:", opt_label_js)	          \
 	DXX_INPUT_THROTTLE_SENSITIVITY(VERB,js,PlayerCfg.JoystickSens)	\
@@ -1330,29 +1557,45 @@ static void input_config_joystick()
 		}
 	};
 #undef DXX_INPUT_CONFIG_MENU
-	menu_items items;
-	newmenu_do1(nullptr, "Joystick Calibration", items.m, unused_newmenu_subfunction, unused_newmenu_userdata, 1);
 
-	constexpr uint_fast32_t joysens = items.opt_label_js + 1;
-	constexpr uint_fast32_t joylin = items.opt_label_jl + 1;
-	constexpr uint_fast32_t joyspd = items.opt_label_jp + 1;
-	constexpr uint_fast32_t joydead = items.opt_label_jd + 1;
-	const auto &m = items.m;
-
-	for (unsigned i = 0; i <= 5; i++)
+struct menu : menu_items, newmenu
+{
+	menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Joystick Calibration"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 1), src)
 	{
-		PlayerCfg.JoystickLinear[i] = m[joylin+i].value;
-		PlayerCfg.JoystickSpeed[i] = m[joyspd+i].value;
-		PlayerCfg.JoystickSens[i] = m[joysens+i].value;
-		PlayerCfg.JoystickDead[i] = m[joydead+i].value;
 	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int menu::subfunction_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			copy_sensitivity_from_menu_to_cfg(m,
+				copy_sensitivity(opt_label_js, &player_config::JoystickSens),
+				copy_sensitivity(opt_label_jl, &player_config::JoystickLinear),
+				copy_sensitivity(opt_label_jp, &player_config::JoystickSpeed),
+				copy_sensitivity(opt_label_jd, &player_config::JoystickDead)
+			);
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
+
+}
+
+static void input_config_joystick()
+{
+	auto menu = window_create<joystick_sensitivity::menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 #endif
 
 #undef DXX_INPUT_THROTTLE_SENSITIVITY
 #undef DXX_INPUT_SENSITIVITY
-
-namespace {
 
 class input_config_menu_items
 {
@@ -1416,7 +1659,6 @@ public:
 	{
 		DXX_INPUT_CONFIG_MENU(ADD);
 	}
-	static int menuset(newmenu *, const d_event &event, input_config_menu_items *pitems);
 #undef DXX_INPUT_CONFIG_MENU
 #undef DXX_INPUT_CONFIG_JOYSTICK_AXIS_ITEM
 #undef DXX_INPUT_CONFIG_JOYSTICK_ITEM
@@ -1424,9 +1666,21 @@ public:
 
 }
 
-int input_config_menu_items::menuset(newmenu *, const d_event &event, input_config_menu_items *pitems)
+namespace dsx {
+namespace {
+
+struct input_config_menu : input_config_menu_items, newmenu
 {
-	const auto &items = pitems->m;
+	input_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{TXT_CONTROLS}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, opt_ic_confkey), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int input_config_menu::subfunction_handler(const d_event &event)
+{
+	const auto &items = m;
 	switch (event.type)
 	{
 		case EVENT_NEWMENU_CHANGED:
@@ -1513,11 +1767,11 @@ int input_config_menu_items::menuset(newmenu *, const d_event &event, input_conf
 
 void input_config()
 {
-	input_config_menu_items menu_items;
-	newmenu_do1(nullptr, TXT_CONTROLS, menu_items.m, &input_config_menu_items::menuset, &menu_items, menu_items.opt_ic_confkey);
+	auto menu = window_create<input_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
-static void reticle_config()
+struct reticle_config_menu_items
 {
 #if DXX_USE_OGL
 #define DXX_RETICLE_TYPE_OGL(VERB)	\
@@ -1545,9 +1799,6 @@ static void reticle_config()
 	DXX_MENUITEM(VERB, TEXT, "", opt_label_blank_reticle_color)	\
 	DXX_MENUITEM(VERB, SLIDER, "Reticle Size:", opt_label_reticle_size, PlayerCfg.ReticleSize, 0, 4)	\
 
-	class menu_items
-	{
-	public:
 		enum
 		{
 			optgrp_reticle,
@@ -1557,39 +1808,56 @@ static void reticle_config()
 			DXX_RETICLE_CONFIG_MENU(ENUM)
 		};
 		std::array<newmenu_item, DXX_RETICLE_CONFIG_MENU(COUNT)> m;
-		menu_items()
+		reticle_config_menu_items()
 		{
 			DXX_RETICLE_CONFIG_MENU(ADD);
-		}
-		void read()
-		{
-			DXX_RETICLE_CONFIG_MENU(READ);
+			auto i = PlayerCfg.ReticleType;
+#if !DXX_USE_OGL
+			if (i > 1)
+				--i;
+#endif
+			m[opt_reticle_classic + i].value = 1;
 		}
 	};
+
+struct reticle_config_menu : reticle_config_menu_items, newmenu
+{
+	reticle_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Reticle Customization"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 1), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int reticle_config_menu::subfunction_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			for (uint_fast32_t i = opt_reticle_classic; i != opt_label_blank_reticle_type; ++i)
+				if (m[i].value)
+				{
+#if !DXX_USE_OGL
+					if (i != opt_reticle_classic)
+						++i;
+#endif
+					PlayerCfg.ReticleType = i - opt_reticle_classic;
+					break;
+				}
+			DXX_RETICLE_CONFIG_MENU(READ);
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
 #undef DXX_RETICLE_CONFIG_MENU
 #undef DXX_RETICLE_TYPE_OGL
-	menu_items items;
-	{
-	auto i = PlayerCfg.ReticleType;
-#if !DXX_USE_OGL
-	if (i > 1) i--;
-#endif
-	items.m[items.opt_reticle_classic + i].value = 1;
-	}
 
-	newmenu_do1(nullptr, "Reticle Customization", items.m, unused_newmenu_subfunction, unused_newmenu_userdata, 1);
-
-	for (uint_fast32_t i = items.opt_reticle_classic; i != items.opt_label_blank_reticle_type; ++i)
-		if (items.m[i].value)
-		{
-#if !DXX_USE_OGL
-			if (i != items.opt_reticle_classic)
-				++i;
-#endif
-			PlayerCfg.ReticleType = i - items.opt_reticle_classic;
-			break;
-		}
-	items.read();
+static void reticle_config()
+{
+	auto menu = window_create<reticle_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 
@@ -1642,14 +1910,14 @@ void hud_style_config()
 }
 
 #if defined(DXX_BUILD_DESCENT_I)
-#define DXX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
+#define DSX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
 	DXX_MENUITEM(VERB, CHECK, "Always-on Bomb Counter",opt_d2bomb,PlayerCfg.BombGauge)	\
 
 #elif defined(DXX_BUILD_DESCENT_II)
 enum {
 	optgrp_missileview,
 };
-#define DXX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
+#define DSX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "Missile view:", opt_missileview_label)	\
 	DXX_MENUITEM(VERB, RADIO, "Disabled", opt_missileview_none, PlayerCfg.MissileViewEnabled == MissileViewMode::None, optgrp_missileview)	\
 	DXX_MENUITEM(VERB, RADIO, "Only own missiles", opt_missileview_selfonly, PlayerCfg.MissileViewEnabled == MissileViewMode::EnabledSelfOnly, optgrp_missileview)	\
@@ -1657,7 +1925,7 @@ enum {
 	DXX_MENUITEM(VERB, CHECK, "Show guided missile in main display", opt_guidedbigview,PlayerCfg.GuidedInBigWindow )	\
 
 #endif
-#define DXX_HUD_MENU_OPTIONS(VERB)	\
+#define DSX_HUD_MENU_OPTIONS(VERB)	\
         DXX_MENUITEM(VERB, MENU, "Reticle Customization...", opt_hud_reticlemenu)	\
         DXX_MENUITEM(VERB, MENU, "View / HUD Style...", opt_hud_stylemenu)	\
 	DXX_MENUITEM(VERB, CHECK, "Screenshots without HUD",opt_screenshot,PlayerCfg.PRShot)	\
@@ -1665,13 +1933,30 @@ enum {
 	DXX_MENUITEM(VERB, CHECK, "Show Player chat only (Multi)",opt_playerchat,PlayerCfg.MultiMessages)	\
 	DXX_MENUITEM(VERB, CHECK, "Show Player ping (Multi)",opt_playerping,PlayerCfg.MultiPingHud)	\
 	DXX_MENUITEM(VERB, CHECK, "Cloak/Invulnerability Timers",opt_cloakinvultimer,PlayerCfg.CloakInvulTimer)	\
-	DXX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
+	DSX_GAME_SPECIFIC_HUDOPTIONS(VERB)	\
 
-enum {
-	DXX_HUD_MENU_OPTIONS(ENUM)
+struct hud_config_menu_items
+{
+	enum {
+		DSX_HUD_MENU_OPTIONS(ENUM)
+	};
+	std::array<newmenu_item, DSX_HUD_MENU_OPTIONS(COUNT)> m;
+	hud_config_menu_items()
+	{
+		DSX_HUD_MENU_OPTIONS(ADD);
+	}
 };
 
-static int hud_config_menuset(newmenu *, const d_event &event, const unused_newmenu_userdata_t *)
+struct hud_config_menu : hud_config_menu_items, newmenu
+{
+	hud_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"HUD Options"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int hud_config_menu::subfunction_handler(const d_event &event)
 {
 	switch (event.type)
 	{
@@ -1684,34 +1969,27 @@ static int hud_config_menuset(newmenu *, const d_event &event, const unused_newm
                                 hud_style_config();
 			return 1;		// stay in menu
 		}
+		case EVENT_WINDOW_CLOSE:
+			DSX_HUD_MENU_OPTIONS(READ);
+#if defined(DXX_BUILD_DESCENT_II)
+			PlayerCfg.MissileViewEnabled = m[opt_missileview_selfandallies].value
+				? MissileViewMode::EnabledSelfAndAllies
+				: (m[opt_missileview_selfonly].value
+					? MissileViewMode::EnabledSelfOnly
+					: MissileViewMode::None);
+#endif
+			break;
 
 		default:
 			break;
 	}
-
 	return 0;
 }
 
-namespace dsx {
 void hud_config()
 {
-	for (;;)
-	{
-		std::array<newmenu_item, DXX_HUD_MENU_OPTIONS(COUNT)> m;
-		DXX_HUD_MENU_OPTIONS(ADD);
-		const auto i = newmenu_do1(nullptr, "Hud Options", m, hud_config_menuset, unused_newmenu_userdata, 0);
-		DXX_HUD_MENU_OPTIONS(READ);
-#if defined(DXX_BUILD_DESCENT_II)
-		PlayerCfg.MissileViewEnabled = m[opt_missileview_selfandallies].value
-			? MissileViewMode::EnabledSelfAndAllies
-			: (m[opt_missileview_selfonly].value
-				? MissileViewMode::EnabledSelfOnly
-				: MissileViewMode::None);
-#endif
-		if (i == -1)
-			break;
-	}
-}
+	auto menu = window_create<hud_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #define DXX_GRAPHICS_MENU(VERB)	\
@@ -1723,10 +2001,12 @@ void hud_config()
 	DXX_OGL1_GRAPHICS_MENU(VERB)	\
 	DXX_MENUITEM(VERB, CHECK, "FPS Counter", opt_gr_fpsindi, CGameCfg.FPSIndicator)	\
 
+struct graphics_config_menu_items
+{
 #if DXX_USE_OGL
-enum {
-	optgrp_texfilt,
-};
+	enum {
+		optgrp_texfilt,
+	};
 #define DXX_OGL0_GRAPHICS_MENU(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "Texture Filtering:", opt_gr_texfilt)	\
 	DXX_MENUITEM(VERB, RADIO, "Classic", opt_filter_none, 0, optgrp_texfilt)	\
@@ -1753,12 +2033,29 @@ enum {
 #define DXX_OGL0_GRAPHICS_MENU(VERB)
 #define DXX_OGL1_GRAPHICS_MENU(VERB)
 #endif
-
-enum {
-	DXX_GRAPHICS_MENU(ENUM)
+	enum {
+		DXX_GRAPHICS_MENU(ENUM)
+	};
+	std::array<newmenu_item, DXX_GRAPHICS_MENU(COUNT)> m;
+	graphics_config_menu_items()
+	{
+		DXX_GRAPHICS_MENU(ADD);
+#if DXX_USE_OGL
+		m[opt_filter_none + CGameCfg.TexFilt].value = 1;
+#endif
+	}
 };
 
-static int graphics_config_menuset(newmenu *, const d_event &event, newmenu_item *const items)
+struct graphics_config_menu : graphics_config_menu_items, newmenu
+{
+	graphics_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Graphics Options"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int graphics_config_menu::subfunction_handler(const d_event &event)
 {
 	switch (event.type)
 	{
@@ -1766,13 +2063,12 @@ static int graphics_config_menuset(newmenu *, const d_event &event, newmenu_item
 		{
 			auto &citem = static_cast<const d_change_event &>(event).citem;
 			if (citem == opt_gr_brightness)
-				gr_palette_set_gamma(items[citem].value);
+				gr_palette_set_gamma(m[citem].value);
 #if DXX_USE_OGL
-			else
-			if (citem == opt_filter_anisotropy && ogl_maxanisotropy <= 1.0)
+			else if (citem == opt_filter_anisotropy && ogl_maxanisotropy <= 1.0 && m[opt_filter_anisotropy].value)
 			{
-				nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), "Anisotropic Filtering not\nsupported by your hardware/driver.");
-				items[opt_filter_anisotropy].value = 0;
+				m[opt_filter_anisotropy].value = 0;
+				window_create<passive_messagebox>(menu_title{TXT_ERROR}, menu_subtitle{"Anisotropic Filtering not\nsupported by your hardware/driver."}, TXT_OK, grd_curscreen->sc_canvas);
 			}
 #endif
 			break;
@@ -1780,12 +2076,40 @@ static int graphics_config_menuset(newmenu *, const d_event &event, newmenu_item
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
-                        if (citem == opt_gr_screenres)
-                                change_res();
-			if (citem == opt_gr_hudmenu)
+			if (citem == opt_gr_screenres)
+				window_create<screen_resolution_menu>();
+			else if (citem == opt_gr_hudmenu)
 				hud_config();
 			return 1;		// stay in menu
 		}
+		case EVENT_WINDOW_CLOSE:
+#if DXX_USE_OGL
+			if (CGameCfg.VSync != m[opt_gr_vsync].value || CGameCfg.Multisample != m[opt_gr_multisample].value)
+				nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie(TXT_OK), menu_subtitle{"Setting VSync or 4x Multisample\nrequires restart on some systems."});
+
+			for (const uint_fast32_t i : xrange(3u))
+				if (m[i + opt_filter_none].value)
+				{
+					CGameCfg.TexFilt = i;
+					break;
+				}
+			CGameCfg.TexAnisotropy = m[opt_filter_anisotropy].value;
+#if defined(DXX_BUILD_DESCENT_II)
+			GameCfg.MovieTexFilt = m[opt_gr_movietexfilt].value;
+#endif
+			PlayerCfg.AlphaEffects = m[opt_gr_alphafx].value;
+			PlayerCfg.DynLightColor = m[opt_gr_dynlightcolor].value;
+			CGameCfg.VSync = m[opt_gr_vsync].value;
+			CGameCfg.Multisample = m[opt_gr_multisample].value;
+#endif
+			CGameCfg.GammaLevel = m[opt_gr_brightness].value;
+			CGameCfg.FPSIndicator = m[opt_gr_fpsindi].value;
+			reset_cockpit();
+#if DXX_USE_OGL
+			gr_set_attributes();
+			gr_set_mode(Game_screen_mode);
+#endif
+			break;
 
 		default:
 			break;
@@ -1794,107 +2118,112 @@ static int graphics_config_menuset(newmenu *, const d_event &event, newmenu_item
 	return 0;
 }
 
-namespace dsx {
 void graphics_config()
 {
-	std::array<newmenu_item, DXX_GRAPHICS_MENU(COUNT)> m;
-	DXX_GRAPHICS_MENU(ADD);
+	auto menu = window_create<graphics_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
+}
 
-#if DXX_USE_OGL
-	m[opt_filter_none+CGameCfg.TexFilt].value=1;
-#endif
-
-	newmenu_do1(nullptr, "Graphics Options", m, graphics_config_menuset, m.data(), 0);
-
-#if DXX_USE_OGL
-	if (CGameCfg.VSync != m[opt_gr_vsync].value || CGameCfg.Multisample != m[opt_gr_multisample].value)
-		nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_OK), "Setting VSync or 4x Multisample\nrequires restart on some systems.");
-
-	range_for (const uint_fast32_t i, xrange(3u))
-		if (m[i+opt_filter_none].value)
-		{
-			CGameCfg.TexFilt = i;
-			break;
-		}
-	CGameCfg.TexAnisotropy = m[opt_filter_anisotropy].value;
-#if defined(DXX_BUILD_DESCENT_II)
-	GameCfg.MovieTexFilt = m[opt_gr_movietexfilt].value;
-#endif
-	PlayerCfg.AlphaEffects = m[opt_gr_alphafx].value;
-	PlayerCfg.DynLightColor = m[opt_gr_dynlightcolor].value;
-	CGameCfg.VSync = m[opt_gr_vsync].value;
-	CGameCfg.Multisample = m[opt_gr_multisample].value;
-#endif
-	GameCfg.GammaLevel = m[opt_gr_brightness].value;
-	CGameCfg.FPSIndicator = m[opt_gr_fpsindi].value;
-#if DXX_USE_OGL
-	gr_set_attributes();
-	gr_set_mode(Game_screen_mode);
-#endif
 }
 }
 
-#if PHYSFS_VER_MAJOR >= 2
+namespace dcx {
 namespace {
 
-struct browser
+#if DXX_USE_SDLMIXER
+struct physfsx_mounted_path
 {
-	browser(const partial_range_t<const file_extension_t *> &r) :
-		ext_range(r)
+	/* PhysFS does not count how many times a path is mounted, and all
+	 * mount requests after the first succeed without changing state.
+	 * This flag tracks whether the path in `path` was mounted by this
+	 * instance of `physfsx_mounted_path` (=1) or if the path was
+	 * already mounted by an earlier call to PhysFS (=0).
+	 *
+	 * If the path was already mounted, destruction of this instance
+	 * must not unmount it.
+	 */
+	uint8_t must_unmount = 0;
+	std::array<char, PATH_MAX> path;
+	uint8_t mount();
+	~physfsx_mounted_path()
 	{
+		if (must_unmount)
+			PHYSFS_unmount(path.data());
 	}
-	const char	*title;			// The title - needed for making another listbox when changing directory
-	window_event_result (*when_selected)(void *userdata, const char *filename);	// What to do when something chosen
-	void	*userdata;		// Whatever you want passed to when_selected
-	string_array_t list;
-	// List of file extensions we're looking for (if looking for a music file many types are possible)
-	const partial_range_t<const file_extension_t *> ext_range;
-	int		select_dir;		// Allow selecting the current directory (e.g. for Jukebox level song directory)
-	int		new_path;		// Whether the view_path is a new searchpath, if so, remove it when finished
-	std::array<char, PATH_MAX> view_path;	// The absolute path we're currently looking at
 };
 
+uint8_t physfsx_mounted_path::mount()
+{
+	assert(!must_unmount);
+	const auto current_mount_point = PHYSFS_getMountPoint(path.data());
+	if (current_mount_point == nullptr)
+	{
+		/* Not currently mounted; try to mount it */
+		must_unmount = PHYSFS_mount(path.data(), nullptr, 0);
+		return must_unmount;
+	}
+	else
+	{
+		/* Already mounted */
+		must_unmount = 0;
+		return 1;
+	}
 }
 
-static void list_dir_el(void *vb, const char *, const char *fname)
+struct browser_storage
 {
-	browser *b = reinterpret_cast<browser *>(vb);
+	struct target_path_not_mounted {};
+	// List of file extensions we're looking for (if looking for a music file many types are possible)
+	const partial_range_t<const file_extension_t *> ext_range;
+	const select_dir_flag select_dir;		// Allow selecting the current directory (e.g. for Jukebox level song directory)
+	physfsx_mounted_path view_path;	// The absolute path we're currently looking at
+	string_array_t list;
+	browser_storage(const char *orig_path, const partial_range_t<const file_extension_t *> &ext_range, const select_dir_flag select_dir, const char *const sep) :
+		ext_range(ext_range), select_dir(select_dir),
+		/* view_path is trivially constructed, then properly initialized as
+		 * a side effect of preparing the string list */
+		list(construct_string_list(orig_path, view_path, ext_range, select_dir, sep))
+	{
+	}
+	static string_array_t construct_string_list(const char *orig_path, physfsx_mounted_path &view_path, const partial_range_t<const file_extension_t *> &r, const select_dir_flag select_dir, const char *const sep);
+};
+
+struct browser : browser_storage, listbox
+{
+	browser(const char *orig_path, menu_title title, const partial_range_t<const file_extension_t *> &r, const select_dir_flag select_dir, const char *const sep, ntstring<PATH_MAX - 1> &userdata) :
+		browser_storage(orig_path, r, select_dir, sep),
+		listbox(0, list.pointer().size(), &list.pointer().front(), title, grd_curscreen->sc_canvas, 1),
+		userdata(userdata)
+	{
+	}
+	ntstring<PATH_MAX - 1> &userdata;		// Whatever you want passed to get_absolute_path
+	virtual window_event_result callback_handler(const d_event &, window_event_result) override;
+};
+
+struct list_directory_context
+{
+	string_array_t &string_list;
+	const partial_range_t<const file_extension_t *> ext_range;
+	const std::array<char, PATH_MAX> &path;
+};
+
+static void list_dir_el(void *context, const char *, const char *fname)
+{
+	const auto c = reinterpret_cast<list_directory_context *>(context);
 	const char *r = PHYSFS_getRealDir(fname);
 	if (!r)
 		r = "";
-	if (!strcmp(r, b->view_path.data()) && (PHYSFS_isDirectory(fname) || PHYSFSX_checkMatchingExtension(fname, b->ext_range))
+	if (!strcmp(r, c->path.data()) && (PHYSFS_isDirectory(fname) || PHYSFSX_checkMatchingExtension(fname, c->ext_range))
 #if defined(__APPLE__) && defined(__MACH__)
 		&& d_stricmp(fname, "Volumes")	// this messes things up, use '..' instead
 #endif
 		)
-		b->list.add(fname);
+		c->string_list.add(fname);
 }
 
-static int list_directory(browser *b)
+window_event_result browser::callback_handler(const d_event &event, window_event_result)
 {
-	b->list.clear();
-	b->list.add("..");		// go to parent directory
-	if (b->select_dir)
-	{
-		b->list.add("<this directory>");	// choose the directory being viewed
-	}
-
-	PHYSFS_enumerateFilesCallback("", list_dir_el, b);
-	b->list.tidy(1 + (b->select_dir ? 1 : 0),
-#ifdef __linux__
-					  strcmp
-#else
-					  d_stricmp
-#endif
-					  );
-
-	return 1;
-}
-
-static window_event_result select_file_handler(listbox *menu,const d_event &event, browser *b)
-{
-	std::array<char, PATH_MAX> newpath{};
-	const char **list = listbox_get_items(*menu);
+	const char **list = listbox_get_items(*this);
 	const char *sep = PHYSFS_getDirSeparator();
 	switch (event.type)
 	{
@@ -1909,12 +2238,13 @@ static window_event_result select_file_handler(listbox *menu,const d_event &even
 				std::array<newmenu_item, 1> m{{
 					nm_item_input(text),
 				}};
-				rval = newmenu_do( NULL, "Enter drive letter", m, unused_newmenu_subfunction, unused_newmenu_userdata );
+				rval = newmenu_do2(menu_title{nullptr}, menu_subtitle{"Enter drive letter"}, m, unused_newmenu_subfunction, unused_newmenu_userdata);
 				text[1] = '\0';
+				std::array<char, PATH_MAX> newpath;
 				snprintf(newpath.data(), newpath.size(), "%s:%s", text, sep);
 				if (!rval && text[0])
 				{
-					select_file_recursive(b->title, newpath, b->ext_range, b->select_dir, b->when_selected, b->userdata);
+					select_file_recursive(title, newpath, ext_range, select_dir, userdata);
 					// close old box.
 					return window_event_result::close;
 				}
@@ -1926,7 +2256,7 @@ static window_event_result select_file_handler(listbox *menu,const d_event &even
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
-			newpath = b->view_path;
+			auto newpath = view_path.path;
 			if (citem == 0)		// go to parent dir
 			{
 				const size_t len_newpath = strlen(newpath.data());
@@ -1960,8 +2290,8 @@ static window_event_result select_file_handler(listbox *menu,const d_event &even
 				else
 					*p = '\0';
 			}
-			else if (citem == 1 && b->select_dir)
-				return (*b->when_selected)(b->userdata, "");
+			else if (citem == 1 && select_dir != select_dir_flag::files_only)
+				return get_absolute_path(userdata, "");
 			else
 			{
 				const size_t len_newpath = strlen(newpath.data());
@@ -1975,37 +2305,23 @@ static window_event_result select_file_handler(listbox *menu,const d_event &even
 			if ((citem == 0) || PHYSFS_isDirectory(list[citem]))
 			{
 				// If it fails, stay in this one
-				return select_file_recursive(b->title, newpath, b->ext_range, b->select_dir, b->when_selected, b->userdata) ? window_event_result::close : window_event_result::handled;
+				return select_file_recursive(title, newpath, ext_range, select_dir, userdata) ? window_event_result::close : window_event_result::handled;
 			}
-			return (*b->when_selected)(b->userdata, list[citem]);
+			return get_absolute_path(userdata, list[citem]);
 		}
 		case EVENT_WINDOW_CLOSE:
-			if (b->new_path)
-				PHYSFS_removeFromSearchPath(b->view_path.data());
-
-			std::default_delete<browser>()(b);
 			break;
-
 		default:
 			break;
 	}
-
 	return window_event_result::ignored;
 }
 
-static int select_file_recursive2(const char *title, const std::array<char, PATH_MAX> &orig_path_storage, const partial_range_t<const file_extension_t *> &ext_range, int select_dir, select_file_subfunction<void> when_selected, void *userdata)
+static int select_file_recursive(const menu_title title, const std::array<char, PATH_MAX> &orig_path_storage, const partial_range_t<const file_extension_t *> &ext_range, const select_dir_flag select_dir, ntstring<PATH_MAX - 1> &userdata)
 {
+	const auto sep = PHYSFS_getDirSeparator();
 	auto orig_path = orig_path_storage.data();
-	const char *sep = PHYSFS_getDirSeparator();
 	std::array<char, PATH_MAX> new_path;
-
-	auto b = std::make_unique<browser>(ext_range);
-	b->title = title;
-	b->when_selected = when_selected;
-	b->userdata = userdata;
-	b->select_dir = select_dir;
-	b->view_path[0] = '\0';
-	b->new_path = 1;
 
 	// Check for a PhysicsFS path first, saves complication!
 	if (strncmp(orig_path, sep, strlen(sep)) && PHYSFSX_exists(orig_path,0))
@@ -2014,93 +2330,86 @@ static int select_file_recursive2(const char *title, const std::array<char, PATH
 		orig_path = new_path.data();
 	}
 
+	try {
+		auto b = window_create<browser>(orig_path, title, ext_range, select_dir, sep, userdata);
+		(void)b;
+		return 1;
+	} catch (browser::target_path_not_mounted) {
+		return 0;
+	}
+}
+
+string_array_t browser_storage::construct_string_list(const char *orig_path, physfsx_mounted_path &view_path, const partial_range_t<const file_extension_t *> &ext_range, const select_dir_flag select_dir, const char *const sep)
+{
+	view_path.path.front() = 0;
 	// Set the viewing directory to orig_path, or some parent of it
 	if (orig_path)
 	{
-		const char *base;
+		const auto base =
 		// Must make this an absolute path for directory browsing to work properly
 #ifdef _WIN32
-		if (!(isalpha(orig_path[0]) && (orig_path[1] == ':')))	// drive letter prompt (e.g. "C:"
-#elif defined(macintosh)
-		if (orig_path[0] == ':')
+		(!(isalpha(orig_path[0]) && (orig_path[1] == ':')))	// drive letter prompt (e.g. "C:"
 #else
-		if (orig_path[0] != '/')
+		(orig_path[0] != '/')
 #endif
-		{
-#ifdef macintosh
-			orig_path++;	// go past ':'
-#endif
-			base = PHYSFS_getBaseDir();
-		}
-		else
-		{
-			base = "";
-		}
-		auto p = std::next(b->view_path.begin(), snprintf(b->view_path.data(), b->view_path.size(), "%s%s", base, orig_path) - 1);
+		? PHYSFS_getBaseDir()
+		: "";
+		const auto vp_begin = view_path.path.begin();
+		auto p = std::next(vp_begin, snprintf(view_path.path.data(), view_path.path.size(), "%s%s", base, orig_path) - 1);
 		const size_t len_sep = strlen(sep);
-		while (b->new_path = PHYSFSX_isNewPath(b->view_path.data()), !PHYSFS_addToSearchPath(b->view_path.data(), 0))
+		while (!view_path.mount())
 		{
-			while (p != b->view_path.begin() && strncmp(p, sep, len_sep))
+			/* Search from the end of the string back to the beginning,
+			 * for the first occurrence of a separator.
+			 */
+			while (p != vp_begin && strncmp(p, sep, len_sep))
 				p--;
 			*p = '\0';
 
-			if (p == b->view_path.begin())
+			if (p == vp_begin)
 				break;
 		}
 	}
-
 	// Set to user directory if we couldn't find a searchpath
-	if (!b->view_path[0])
+	if (!view_path.path[0])
 	{
-		snprintf(b->view_path.data(), b->view_path.size(), "%s", PHYSFS_getUserDir());
-		b->new_path = PHYSFSX_isNewPath(b->view_path.data());
-		if (!PHYSFS_addToSearchPath(b->view_path.data(), 0))
+		snprintf(view_path.path.data(), view_path.path.size(), "%s", PHYSFS_getUserDir());
+		if (!view_path.mount())
 		{
-			return 0;
+			/* If the directory was not mounted, and cannot be mounted,
+			 * prevent showing the dialog.
+			 */
+			throw target_path_not_mounted();
 		}
 	}
-
-	if (!list_directory(b.get()))
+	string_array_t list;
+	list.add("..");		// go to parent directory
+	std::size_t tidy_offset = 1;
+	if (select_dir != select_dir_flag::files_only)
 	{
-		return 0;
+		++tidy_offset;
+		list.add("<this directory>");	// choose the directory being viewed
 	}
-
-	auto pb = b.get();
-	return newmenu_listbox1(title, pb->list.pointer().size(), &pb->list.pointer().front(), 1, 0, select_file_handler, std::move(b)) != NULL;
+	list_directory_context context{list, ext_range, view_path.path};
+	PHYSFS_enumerateFilesCallback("", list_dir_el, &context);
+	list.tidy(tidy_offset);
+	return list;
 }
+#endif
 
 #define DXX_MENU_ITEM_BROWSE(VERB, TXT, OPT)	\
 	DXX_MENUITEM(VERB, MENU, TXT " (browse...)", OPT)
-#else
 
-int select_file_recursive2(const char *title, const char *orig_path, const partial_range_t<const file_extension_t *> &ext_range, int select_dir, int (*when_selected)(void *userdata, const char *filename), void *userdata)
-{
-	return 0;
+}
 }
 
-	/* Include blank string to force a compile error if TXT cannot be
-	 * string-pasted
-	 */
-#define DXX_MENU_ITEM_BROWSE(VERB, TXT, OPT)	\
-	DXX_MENUITEM(VERB, TEXT, TXT "", OPT)
-#endif
-
-#if DXX_USE_SDLMIXER
-static window_event_result get_absolute_path(char *full_path, const char *rel_path)
-{
-	PHYSFSX_getRealPath(rel_path, full_path, PATH_MAX);
-	return window_event_result::close;
-}
-
-#define SELECT_SONG(t, s)	select_file_recursive(t, CGameCfg.CMMiscMusic[s], jukebox_exts, 0, get_absolute_path, CGameCfg.CMMiscMusic[s].data())
-#endif
-
+namespace dsx {
 namespace {
 
 #if defined(DXX_BUILD_DESCENT_I)
-#define REDBOOK_PLAYORDER_TEXT	"force mac cd track order"
+#define DSX_REDBOOK_PLAYORDER_TEXT	"force mac cd track order"
 #elif defined(DXX_BUILD_DESCENT_II)
-#define REDBOOK_PLAYORDER_TEXT	"force descent ][ cd track order"
+#define DSX_REDBOOK_PLAYORDER_TEXT	"force descent ][ cd track order"
 #endif
 
 #if DXX_USE_SDLMIXER || defined(_WIN32)
@@ -2161,7 +2470,7 @@ namespace {
 #define DXX_MUSIC_OPTIONS_SEPARATOR_TEXT ""
 #endif
 
-#define DXX_SOUND_MENU(VERB)	\
+#define DSX_SOUND_MENU(VERB)	\
 	DXX_MENUITEM(VERB, SLIDER, TXT_FX_VOLUME, opt_sm_digivol, GameCfg.DigiVolume, 0, 8)	\
 	DXX_MENUITEM(VERB, SLIDER, "Music volume", opt_sm_musicvol, GameCfg.MusicVolume, 0, 8)	\
 	DXX_MENUITEM(VERB, CHECK, TXT_REVERSE_STEREO, opt_sm_revstereo, GameCfg.ReverseStereo)	\
@@ -2173,7 +2482,7 @@ namespace {
 	DXX_SOUND_JUKEBOX_MENU_ITEM(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "", opt_label_blank1)	\
 	DXX_MENUITEM(VERB, TEXT, DXX_MUSIC_OPTIONS_CD_LABEL DXX_MUSIC_OPTIONS_SEPARATOR_TEXT DXX_MUSIC_OPTIONS_JUKEBOX_LABEL " options:", opt_label_music_options)	\
-	DXX_MENUITEM(VERB, CHECK, REDBOOK_PLAYORDER_TEXT, opt_sm_redbook_playorder, GameCfg.OrigTrackOrder)	\
+	DXX_MENUITEM(VERB, CHECK, DSX_REDBOOK_PLAYORDER_TEXT, opt_sm_redbook_playorder, GameCfg.OrigTrackOrder)	\
 	DXX_SOUND_SDLMIXER_MENU_ITEMS(VERB)	\
 
 class sound_menu_items
@@ -2188,27 +2497,39 @@ public:
 	};
 	enum
 	{
-		DXX_SOUND_MENU(ENUM)
+		DSX_SOUND_MENU(ENUM)
 	};
-	std::array<newmenu_item, DXX_SOUND_MENU(COUNT)> m;
+	std::array<newmenu_item, DSX_SOUND_MENU(COUNT)> m;
 	sound_menu_items()
 	{
-		DXX_SOUND_MENU(ADD);
+		DSX_SOUND_MENU(ADD);
 	}
 	void read()
 	{
-		DXX_SOUND_MENU(READ);
+		DSX_SOUND_MENU(READ);
 	}
-	static int menuset(newmenu *, const d_event &event, sound_menu_items *pitems);
 };
 
-#undef DXX_SOUND_MENU
-
-}
-
-int sound_menu_items::menuset(newmenu *, const d_event &event, sound_menu_items *pitems)
+struct sound_menu : sound_menu_items, newmenu
 {
-	const auto &items = pitems->m;
+#if DXX_USE_SDLMIXER
+	ntstring<PATH_MAX - 1> &current_music = Game_wind
+		? CGameCfg.CMLevelMusicPath
+		: CGameCfg.CMMiscMusic[SONG_TITLE];
+	ntstring<PATH_MAX - 1> old_music = current_music;
+#endif
+	sound_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Sound Effects & Music"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+#undef DSX_SOUND_MENU
+
+int sound_menu::subfunction_handler(const d_event &event)
+{
+	const auto &items = m;
 	int replay = 0;
 	int rval = 0;
 	switch (event.type)
@@ -2298,27 +2619,36 @@ int sound_menu_items::menuset(newmenu *, const d_event &event, sound_menu_items 
 			if (citem == opt_sm_mtype3_lmpath)
 			{
 				static const std::array<file_extension_t, 1> ext_list{{"m3u"}};		// select a directory or M3U playlist
-				const auto cfgpath = CGameCfg.CMLevelMusicPath.data();
 				select_file_recursive(
-					"Select directory or\nM3U playlist to\n play level music from" WINDOWS_DRIVE_CHANGE_TEXT,
-									  CGameCfg.CMLevelMusicPath, ext_list, 1,	// look in current music path for ext_list files and allow directory selection
-									  get_absolute_path, cfgpath);	// just copy the absolute path
+					menu_title{"Select directory or\nM3U playlist to\n play level music from" WINDOWS_DRIVE_CHANGE_TEXT},
+									  CGameCfg.CMLevelMusicPath, ext_list, select_dir_flag::directories_or_files,	// look in current music path for ext_list files and allow directory selection
+									  CGameCfg.CMLevelMusicPath);	// just copy the absolute path
 			}
 			else if (citem == opt_sm_cm_mtype3_file1_b)
-				SELECT_SONG("Select main menu music" WINDOWS_DRIVE_CHANGE_TEXT, SONG_TITLE);
+				SELECT_SONG(menu_title{"Select main menu music" WINDOWS_DRIVE_CHANGE_TEXT}, SONG_TITLE);
 			else if (citem == opt_sm_cm_mtype3_file2_b)
-				SELECT_SONG("Select briefing music" WINDOWS_DRIVE_CHANGE_TEXT, SONG_BRIEFING);
+				SELECT_SONG(menu_title{"Select briefing music" WINDOWS_DRIVE_CHANGE_TEXT}, SONG_BRIEFING);
 			else if (citem == opt_sm_cm_mtype3_file3_b)
-				SELECT_SONG("Select credits music" WINDOWS_DRIVE_CHANGE_TEXT, SONG_CREDITS);
+				SELECT_SONG(menu_title{"Select credits music" WINDOWS_DRIVE_CHANGE_TEXT}, SONG_CREDITS);
 			else if (citem == opt_sm_cm_mtype3_file4_b)
-				SELECT_SONG("Select escape sequence music" WINDOWS_DRIVE_CHANGE_TEXT, SONG_ENDLEVEL);
+				SELECT_SONG(menu_title{"Select escape sequence music" WINDOWS_DRIVE_CHANGE_TEXT}, SONG_ENDLEVEL);
 			else if (citem == opt_sm_cm_mtype3_file5_b)
-				SELECT_SONG("Select game ending music" WINDOWS_DRIVE_CHANGE_TEXT, SONG_ENDGAME);
+				SELECT_SONG(menu_title{"Select game ending music" WINDOWS_DRIVE_CHANGE_TEXT}, SONG_ENDGAME);
 #endif
 			rval = 1;	// stay in menu
 			break;
 		}
 		case EVENT_WINDOW_CLOSE:
+#if DXX_USE_SDLMIXER
+			if (strcmp(old_music.data(), current_music.data()))
+			{
+				songs_uninit();
+				if (Game_wind)
+					songs_play_level_song(Current_level_num, 0);
+				else
+					songs_play_song(SONG_TITLE, 1);
+			}
+#endif
 			break;
 
 		default:
@@ -2338,36 +2668,24 @@ int sound_menu_items::menuset(newmenu *, const d_event &event, sound_menu_items 
 	return rval;
 }
 
-void do_sound_menu()
-{
-
-#if DXX_USE_SDLMIXER
-	const auto old_CMLevelMusicPath = CGameCfg.CMLevelMusicPath;
-	const auto old_CMMiscMusic0 = CGameCfg.CMMiscMusic[SONG_TITLE];
-#endif
-
-	sound_menu_items items;
-	newmenu_do1(nullptr, "Sound Effects & Music", items.m, &sound_menu_items::menuset, &items, 0);
-
-#if DXX_USE_SDLMIXER
-	if ((Game_wind && strcmp(old_CMLevelMusicPath.data(), CGameCfg.CMLevelMusicPath.data())) ||
-		(!Game_wind && strcmp(old_CMMiscMusic0.data(), CGameCfg.CMMiscMusic[SONG_TITLE].data())))
-	{
-		songs_uninit();
-
-		if (Game_wind)
-			songs_play_level_song( Current_level_num, 0 );
-		else
-			songs_play_song(SONG_TITLE, 1);
-	}
-#endif
+}
 }
 
+void do_sound_menu()
+{
+	auto menu = window_create<sound_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
+}
+
+namespace dsx {
+
+namespace {
+
 #if defined(DXX_BUILD_DESCENT_I)
-#define DXX_GAME_SPECIFIC_OPTIONS(VERB)	\
+#define DSX_GAME_SPECIFIC_OPTIONS(VERB)	\
 
 #elif defined(DXX_BUILD_DESCENT_II)
-#define DXX_GAME_SPECIFIC_OPTIONS(VERB)	\
+#define DSX_GAME_SPECIFIC_OPTIONS(VERB)	\
 	DXX_MENUITEM(VERB, CHECK, "Headlight on when picked up", opt_headlighton,PlayerCfg.HeadlightActiveDefault )	\
 	DXX_MENUITEM(VERB, CHECK, "Escort robot hot keys",opt_escorthotkey,PlayerCfg.EscortHotKeys)	\
 	DXX_MENUITEM(VERB, CHECK, "Movie Subtitles",opt_moviesubtitle,GameCfg.MovieSubtitles)	\
@@ -2376,16 +2694,12 @@ void do_sound_menu()
 
 #endif
 
-enum {
-	optgrp_autoselect_firing,
-};
-
-#define DXX_GAMEPLAY_MENU_OPTIONS(VERB)	\
+#define DSX_GAMEPLAY_MENU_OPTIONS(VERB)	\
 	DXX_MENUITEM(VERB, CHECK, "Ship auto-leveling",opt_autolevel, PlayerCfg.AutoLeveling)	\
 	DXX_MENUITEM(VERB, CHECK, "Persistent Debris",opt_persist_debris,PlayerCfg.PersistentDebris)	\
 	DXX_MENUITEM(VERB, CHECK, "No Rankings (Multi)",opt_noranking,PlayerCfg.NoRankings)	\
 	DXX_MENUITEM(VERB, CHECK, "Free Flight in Automap",opt_freeflight, PlayerCfg.AutomapFreeFlight)	\
-	DXX_GAME_SPECIFIC_OPTIONS(VERB)	\
+	DSX_GAME_SPECIFIC_OPTIONS(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "", opt_label_blank)	\
         DXX_MENUITEM(VERB, TEXT, "Weapon Autoselect options:", opt_label_autoselect)	\
 	DXX_MENUITEM(VERB, MENU, "Primary ordering...", opt_gameplay_reorderprimary_menu)	\
@@ -2397,11 +2711,34 @@ enum {
 	DXX_MENUITEM(VERB, CHECK, "Only Cycle Autoselect Weapons",opt_only_autoselect,PlayerCfg.CycleAutoselectOnly)	\
 	DXX_MENUITEM_AUTOSAVE_LABEL_INPUT(VERB)	\
 
-enum {
-        DXX_GAMEPLAY_MENU_OPTIONS(ENUM)
+struct gameplay_config_menu_items
+{
+	enum {
+		DSX_GAMEPLAY_MENU_OPTIONS(ENUM)
+	};
+	std::array<newmenu_item, DSX_GAMEPLAY_MENU_OPTIONS(COUNT)> m;
+	human_readable_mmss_time<decltype(d_gameplay_options::AutosaveInterval)::rep> AutosaveInterval;
+	gameplay_config_menu_items()
+	{
+#if defined(DXX_BUILD_DESCENT_II)
+		auto thief_absent = PlayerCfg.ThiefModifierFlags & ThiefModifier::Absent;
+		auto thief_cannot_steal_energy_weapons = PlayerCfg.ThiefModifierFlags & ThiefModifier::NoEnergyWeapons;
+#endif
+		format_human_readable_time(AutosaveInterval, PlayerCfg.SPGameplayOptions.AutosaveInterval);
+		DSX_GAMEPLAY_MENU_OPTIONS(ADD);
+	}
 };
 
-static int gameplay_config_menuset(newmenu *, const d_event &event, const unused_newmenu_userdata_t *)
+struct gameplay_config_menu : gameplay_config_menu_items, newmenu
+{
+	gameplay_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Gameplay Options"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int gameplay_config_menu::subfunction_handler(const d_event &event)
 {
 	switch (event.type)
 	{
@@ -2414,6 +2751,26 @@ static int gameplay_config_menuset(newmenu *, const d_event &event, const unused
                                 ReorderSecondary();
 			return 1;		// stay in menu
 		}
+		case EVENT_WINDOW_CLOSE:
+			{
+#if defined(DXX_BUILD_DESCENT_II)
+				uint8_t thief_absent;
+				uint8_t thief_cannot_steal_energy_weapons;
+#endif
+				DSX_GAMEPLAY_MENU_OPTIONS(READ);
+				PlayerCfg.NoFireAutoselect = m[opt_autoselect_firing_delayed].value
+					? FiringAutoselectMode::Delayed
+					: (m[opt_autoselect_firing_immediate].value
+					   ? FiringAutoselectMode::Immediate
+					   : FiringAutoselectMode::Never);
+#if defined(DXX_BUILD_DESCENT_II)
+				PlayerCfg.ThiefModifierFlags =
+					(thief_absent ? ThiefModifier::Absent : 0) |
+					(thief_cannot_steal_energy_weapons ? ThiefModifier::NoEnergyWeapons : 0);
+#endif
+				parse_human_readable_time(PlayerCfg.SPGameplayOptions.AutosaveInterval, AutosaveInterval);
+			}
+			break;
 
 		default:
 			break;
@@ -2424,97 +2781,44 @@ static int gameplay_config_menuset(newmenu *, const d_event &event, const unused
 
 void gameplay_config()
 {
-	for (;;)
-	{
-		std::array<newmenu_item, DXX_GAMEPLAY_MENU_OPTIONS(COUNT)> m;
-#if defined(DXX_BUILD_DESCENT_II)
-		auto thief_absent = PlayerCfg.ThiefModifierFlags & ThiefModifier::Absent;
-		auto thief_cannot_steal_energy_weapons = PlayerCfg.ThiefModifierFlags & ThiefModifier::NoEnergyWeapons;
-#endif
-		human_readable_mmss_time<decltype(d_gameplay_options::AutosaveInterval)::rep> AutosaveInterval;
-		format_human_readable_time(AutosaveInterval, PlayerCfg.SPGameplayOptions.AutosaveInterval);
-		DXX_GAMEPLAY_MENU_OPTIONS(ADD);
-		const auto i = newmenu_do1(nullptr, "Gameplay Options", m, gameplay_config_menuset, unused_newmenu_userdata, 0);
-		DXX_GAMEPLAY_MENU_OPTIONS(READ);
-		PlayerCfg.NoFireAutoselect = m[opt_autoselect_firing_delayed].value
-			? FiringAutoselectMode::Delayed
-			: (m[opt_autoselect_firing_immediate].value
-				? FiringAutoselectMode::Immediate
-				: FiringAutoselectMode::Never);
-#if defined(DXX_BUILD_DESCENT_II)
-		PlayerCfg.ThiefModifierFlags =
-			(thief_absent ? ThiefModifier::Absent : 0) |
-			(thief_cannot_steal_energy_weapons ? ThiefModifier::NoEnergyWeapons : 0);
-#endif
-		parse_human_readable_time(PlayerCfg.SPGameplayOptions.AutosaveInterval, AutosaveInterval);
-		if (i == -1)
-			break;
-	}
+	auto menu = window_create<gameplay_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #if DXX_USE_UDP
-static int multi_player_menu_handler(newmenu *menu,const d_event &event, int *menu_choice)
+int netgame_menu::subfunction_handler(const d_event &event)
 {
-	newmenu_item *items = newmenu_get_items(menu);
-
 	switch (event.type)
 	{
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
 			// stay in multiplayer menu, even after having played a game
-			return do_option(menu_choice[citem]);
+			return dispatch_menu_option(static_cast<netgame_menu_item_index>(citem));
 		}
-
-		case EVENT_WINDOW_CLOSE:
-			d_free(menu_choice);
-			d_free(items);
-			break;
-
 		default:
 			break;
 	}
-
 	return 0;
 }
 
 void do_multi_player_menu()
 {
-	int *menu_choice;
-	newmenu_item *m;
-	unsigned num_options = 0;
-
-	MALLOC(menu_choice, int, 3);
-	if (!menu_choice)
-		return;
-
-	MALLOC(m, newmenu_item, 3);
-	if (!m)
-	{
-		d_free(menu_choice);
-		return;
-	}
-
-#if DXX_USE_UDP
-	ADD_ITEM("HOST GAME", MENU_START_UDP_NETGAME, -1);
-#if DXX_USE_TRACKER
-	ADD_ITEM("FIND LAN/ONLINE GAMES", MENU_JOIN_LIST_UDP_NETGAME, -1);
-#else
-	ADD_ITEM("FIND LAN GAMES", MENU_JOIN_LIST_UDP_NETGAME, -1);
-#endif
-	ADD_ITEM("JOIN GAME MANUALLY", MENU_JOIN_MANUAL_UDP_NETGAME, -1);
-#endif
-
-	newmenu_do3(nullptr, TXT_MULTIPLAYER, unchecked_partial_range(m, num_options), multi_player_menu_handler, menu_choice, 0, nullptr);
+	auto menu = window_create<netgame_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 #endif
 
+}
+
+}
+
 void do_options_menu()
 {
-	auto items = new options_menu_items;
 	// Fall back to main event loop
 	// Allows clean closing and re-opening when resolution changes
-	newmenu_do3(nullptr, TXT_OPTIONS, items->m, options_menuset, items, 0, nullptr);
+	auto menu = window_create<options_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #ifndef RELEASE
@@ -2614,10 +2918,8 @@ window_event_result polygon_models_viewer_window::event_handler(const d_event &e
 
 static void polygon_models_viewer()
 {
-	auto viewer_window = std::make_unique<polygon_models_viewer_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	viewer_window->send_creation_events();
-	event_process_all();
-	viewer_window.release();
+	auto viewer_window = window_create<polygon_models_viewer_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	(void)viewer_window;
 }
 
 window_event_result gamebitmaps_viewer_window::event_handler(const d_event &event)
@@ -2687,10 +2989,8 @@ window_event_result gamebitmaps_viewer_window::event_handler(const d_event &even
 
 static void gamebitmaps_viewer()
 {
-	auto viewer_window = std::make_unique<gamebitmaps_viewer_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	viewer_window->send_creation_events();
-	event_process_all();
-	viewer_window.release();
+	auto viewer_window = window_create<gamebitmaps_viewer_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	(void)viewer_window;
 }
 
 #define DXX_SANDBOX_MENU(VERB)	\
@@ -2711,13 +3011,19 @@ public:
 	}
 };
 
-static int sandbox_menuset(newmenu *, const d_event &event, sandbox_menu_items *items)
+struct sandbox_menu : sandbox_menu_items, newmenu
+{
+	sandbox_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"Coder's sandbox"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+int sandbox_menu::subfunction_handler(const d_event &event)
 {
 	switch (event.type)
 	{
-		case EVENT_NEWMENU_CHANGED:
-			break;
-
 		case EVENT_NEWMENU_SELECTED:
 		{
 			auto &citem = static_cast<const d_select_event &>(event).citem;
@@ -2732,13 +3038,6 @@ static int sandbox_menuset(newmenu *, const d_event &event, sandbox_menu_items *
 			}
 			return 1; // stay in menu until escape
 		}
-
-		case EVENT_WINDOW_CLOSE:
-		{
-			std::default_delete<sandbox_menu_items>()(items);
-			break;
-		}
-
 		default:
 			break;
 	}
@@ -2747,8 +3046,8 @@ static int sandbox_menuset(newmenu *, const d_event &event, sandbox_menu_items *
 
 void do_sandbox_menu()
 {
-	auto items = new sandbox_menu_items;
-	newmenu_do3(nullptr, "Coder's sandbox", items->m, sandbox_menuset, items, 0, nullptr);
+	auto menu = window_create<sandbox_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 }

@@ -300,7 +300,7 @@ static void con_draw(void)
 	gr_set_default_canvas();
 	auto &canvas = *grd_curcanv;
 	auto &game_font = *GAME_FONT;
-	gr_set_curfont(canvas, GAME_FONT);
+	gr_set_curfont(canvas, game_font);
 	const uint8_t color = BM_XRGB(0, 0, 0);
 	gr_settransblend(canvas, 7, gr_blend::normal);
 	const auto &&fspacy1 = FSPACY(1);
@@ -465,9 +465,8 @@ void con_showup(control_info &Controls)
 {
 	game_flush_inputs(Controls);
 	con_state = CON_STATE_OPENING;
-	auto wind = std::make_unique<console_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	wind->send_creation_events();
-	wind.release();
+	auto wind = window_create<console_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	(void)wind;
 }
 
 }

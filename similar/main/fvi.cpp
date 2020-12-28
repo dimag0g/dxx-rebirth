@@ -49,6 +49,8 @@ using std::min;
 
 #define face_type_num(nfaces,face_num,tri_edge) ((nfaces==1)?0:(tri_edge*2 + face_num))
 
+namespace {
+
 //find the point on the specified plane where the line intersects
 //returns true if point found, false if line parallel to plane
 //new_pnt is the found point on the plane
@@ -82,8 +84,6 @@ static int find_plane_line_intersection(vms_vector &new_pnt,const vms_vector &pl
 
 }
 
-namespace {
-
 struct vec2d {
 	fix i,j;
 };
@@ -100,8 +100,6 @@ struct ij_pair
 	fix vms_vector::*i;
 	fix vms_vector::*j;
 };
-
-}
 
 __attribute_warn_unused_result
 static ij_pair find_largest_normal(vms_vector t)
@@ -121,7 +119,7 @@ static ij_pair find_largest_normal(vms_vector t)
 
 //see if a point in inside a face by projecting into 2d
 __attribute_warn_unused_result
-static unsigned check_point_to_face(const vms_vector &checkp, const vms_vector &norm, const unsigned facenum, const unsigned nv, const vertex_array_list_t &vertex_list)
+static unsigned check_point_to_face(const vms_vector &checkp, const vms_vector &norm, const unsigned facenum, const unsigned nv, const vertnum_array_list_t &vertex_list)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
@@ -170,7 +168,7 @@ static unsigned check_point_to_face(const vms_vector &checkp, const vms_vector &
 
 //check if a sphere intersects a face
 __attribute_warn_unused_result
-static int check_sphere_to_face(const vms_vector &pnt, const vms_vector &normal, const unsigned facenum, const unsigned nv, const fix rad, const vertex_array_list_t &vertex_list)
+static int check_sphere_to_face(const vms_vector &pnt, const vms_vector &normal, const unsigned facenum, const unsigned nv, const fix rad, const vertnum_array_list_t &vertex_list)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
@@ -254,7 +252,7 @@ static int check_line_to_face(vms_vector &newp, const vms_vector &p0, const vms_
 	const auto &vertex_list = v.second;
 
 	//use lowest point number
-	unsigned vertnum;
+	vertnum_t vertnum;
 	if (num_faces==2) {
 		vertnum = min(vertex_list[0],vertex_list[2]);
 	}
@@ -603,9 +601,6 @@ static vm_distance_squared check_vector_to_object(vms_vector &intp, const vms_ve
 	return check_vector_to_sphere_1(intp, p0, p1, obj.pos, size+rad);
 }
 
-
-namespace {
-
 #define MAX_SEGS_VISITED 100
 struct fvi_segment_visit_count_t
 {
@@ -621,7 +616,9 @@ struct fvi_segments_visited_t : public fvi_segment_visit_count_t, public visited
 }
 
 namespace dsx {
+namespace {
 static int fvi_sub(vms_vector &intp, segnum_t &ints, const vms_vector &p0, const vcsegptridx_t startseg, const vms_vector &p1, fix rad, const icobjptridx_t thisobjnum, const std::pair<const vcobjidx_t *, const vcobjidx_t *> ignore_obj_list, int flags, fvi_info::segment_array_t &seglist, segnum_t entry_seg, fvi_segments_visited_t &visited, unsigned &fvi_hit_side, icsegidx_t &fvi_hit_side_seg, unsigned &fvi_nest_count, icsegidx_t &fvi_hit_pt_seg, const vms_vector *&wall_norm, icobjidx_t &fvi_hit_object);
+}
 
 //What the hell is fvi_hit_seg for???
 
@@ -779,6 +776,8 @@ int find_vector_intersection(const fvi_query &fq, fvi_info &hit_data)
 
 }
 
+namespace {
+
 __attribute_warn_unused_result
 static bool obj_in_list(const vcobjidx_t objnum, const std::pair<const vcobjidx_t *, const vcobjidx_t *> obj_list)
 {
@@ -789,7 +788,9 @@ static bool obj_in_list(const vcobjidx_t objnum, const std::pair<const vcobjidx_
 
 static int check_trans_wall(const vms_vector &pnt,vcsegptridx_t seg,int sidenum,int facenum);
 }
+}
 
+namespace {
 static void append_segments(fvi_info::segment_array_t &dst, const fvi_info::segment_array_t &src)
 {
 	/* Avoid overflow.  Original code had n_segs < MAX_SEGS_VISITED-1,
@@ -798,8 +799,10 @@ static void append_segments(fvi_info::segment_array_t &dst, const fvi_info::segm
 	const size_t scount = src.size(), dcount = dst.size(), count = std::min(scount, dst.max_size() - dcount - 1);
 	std::copy(src.begin(), src.begin() + count, std::back_inserter(dst));
 }
+}
 
 namespace dsx {
+namespace {
 static int fvi_sub(vms_vector &intp, segnum_t &ints, const vms_vector &p0, const vcsegptridx_t startseg, const vms_vector &p1, fix rad, icobjptridx_t thisobjnum, const std::pair<const vcobjidx_t *, const vcobjidx_t *> ignore_obj_list, int flags, fvi_info::segment_array_t &seglist, segnum_t entry_seg, fvi_segments_visited_t &visited, unsigned &fvi_hit_side, icsegidx_t &fvi_hit_side_seg, unsigned &fvi_nest_count, icsegidx_t &fvi_hit_pt_seg, const vms_vector *&wall_norm, icobjidx_t &fvi_hit_object)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
@@ -945,15 +948,15 @@ static int fvi_sub(vms_vector &intp, segnum_t &ints, const vms_vector &p0, const
 						if (thisobjnum == get_local_player().objnum && cheats.ghostphysics)
 						{
 							if (IS_CHILD(child_segnum))
- 								wid_flag |= WID_FLY_FLAG;
+ 								wid_flag |= WALL_IS_DOORWAY_FLAG::fly;
 						}
 
-						if ((wid_flag & WID_FLY_FLAG) ||
+						if ((wid_flag & WALL_IS_DOORWAY_FLAG::fly) ||
 							(
 #if defined(DXX_BUILD_DESCENT_I)
 								(wid_flag == WID_TRANSPARENT_WALL) && 
 #elif defined(DXX_BUILD_DESCENT_II)
-								((wid_flag & WID_RENDER_FLAG) && (wid_flag & WID_RENDPAST_FLAG)) &&
+								((wid_flag & WALL_IS_DOORWAY_FLAG::render) && (wid_flag & WALL_IS_DOORWAY_FLAG::rendpast)) &&
 #endif
 								((flags & FQ_TRANSWALL) || (flags & FQ_TRANSPOINT && check_trans_wall(hit_point,startseg,side,face))))) {
 
@@ -1076,6 +1079,7 @@ quit_looking:
 
 }
 }
+}
 
 /*
 //--unused-- //compute the magnitude of a 2d vector
@@ -1182,6 +1186,7 @@ fvi_hitpoint find_hitpoint_uv(const vms_vector &pnt, const cscusegment seg, cons
 	};
 }
 
+namespace {
 //check if a particular point on a wall is a transparent pixel
 //returns 1 if can pass though the wall, else 0
 int check_trans_wall(const vms_vector &pnt,const vcsegptridx_t seg,int sidenum,int facenum)
@@ -1225,7 +1230,9 @@ int check_trans_wall(const vms_vector &pnt,const vcsegptridx_t seg,int sidenum,i
 #endif
 }
 }
+}
 
+namespace {
 //new function for Mike
 //note: n_segs_visited must be set to zero before this is called
 static sphere_intersects_wall_result sphere_intersects_wall(fvcsegptridx &vcsegptridx, fvcvertptr &vcvertptr, const vms_vector &pnt, const vcsegptridx_t seg, const fix rad, fvi_segments_visited_t &visited)
@@ -1280,6 +1287,7 @@ static sphere_intersects_wall_result sphere_intersects_wall(fvcsegptridx &vcsegp
 		}
 	}
 	return {};
+}
 }
 
 sphere_intersects_wall_result sphere_intersects_wall(fvcsegptridx &vcsegptridx, fvcvertptr &vcvertptr, const vms_vector &pnt, const vcsegptridx_t seg, const fix rad)

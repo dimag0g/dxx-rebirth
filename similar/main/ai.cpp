@@ -103,9 +103,6 @@ static void ai_multi_send_robot_position(object &objnum, int force);
 #if defined(DXX_BUILD_DESCENT_I)
 #define	BOSS_DEATH_SOUND_DURATION	0x2ae14		//	2.68 seconds
 
-constexpr d_level_shared_boss_state::D1_Boss_cloak_interval d_level_shared_boss_state::Boss_cloak_interval;
-constexpr d_level_shared_boss_state::D1_Boss_teleport_interval d_level_shared_boss_state::Boss_teleport_interval;
-
 #elif defined(DXX_BUILD_DESCENT_II)
 #define	FIRE_AT_NEARBY_PLAYER_THRESHOLD	(F1_0*40)
 
@@ -1031,7 +1028,7 @@ static int lead_player(const object_base &objp, const vms_vector &fire_point, co
 	//	Matter weapons:
 	//	At Rookie or Trainee, don't lead at all.
 	//	At higher skill levels, don't lead as well.  Accomplish this by screwing up max_weapon_speed.
-	if (wptr->matter)
+	if (wptr->matter != weapon_info::matter_flag::energy)
 	{
 		if (Difficulty_level <= 1)
 			return 0;
@@ -1162,7 +1159,7 @@ static void ai_fire_laser_at_player(const d_level_shared_segment_state &LevelSha
 		{
 			//	They are connected via conn_side in segment obj->segnum.
 			//	See if they are unobstructed.
-			if (!(WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, csegp, conn_side) & WID_FLY_FLAG))
+			if (!(WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, csegp, conn_side) & WALL_IS_DOORWAY_FLAG::fly))
 			{
 				//	Can't fly through, so don't let this bot fire through!
 				return;
@@ -1855,7 +1852,7 @@ int ai_door_is_openable(
 		if (wall_num != wall_none)
 		{
 			const auto wt = wall.type;
-			if (wt == WALL_DOOR && wall.keys == KEY_NONE && !(wall.flags & WALL_DOOR_LOCKED))
+			if (wt == WALL_DOOR && wall.keys == wall_key::none && !(wall.flags & WALL_DOOR_LOCKED))
 			{
 				static_assert(WALL_DOOR != 0, "WALL_DOOR must be nonzero for this shortcut to work properly.");
 				return wt;
@@ -1878,9 +1875,9 @@ int ai_door_is_openable(
 		}
 		switch (const auto wall_keys = wall.keys)
 		{
-				case KEY_BLUE:
-				case KEY_GOLD:
-				case KEY_RED:
+			case wall_key::blue:
+			case wall_key::gold:
+			case wall_key::red:
 				{
 					return powerup_flags & static_cast<PLAYER_FLAG>(wall_keys);
 				}
@@ -1936,12 +1933,12 @@ int ai_door_is_openable(
 		if (wall_num != wall_none)
 		{
 			const auto wt = wall.type;
-			if (wt == WALL_DOOR && (wall.keys == KEY_NONE) && !(wall.flags & WALL_DOOR_LOCKED))
+			if (wt == WALL_DOOR && (wall.keys == wall_key::none) && !(wall.flags & WALL_DOOR_LOCKED))
 			{
 				static_assert(WALL_DOOR != 0, "WALL_DOOR must be nonzero for this shortcut to work properly.");
 				return wt;
 			}
-			else if (wall.keys != KEY_NONE) {	//	Allow bots to open doors to which player has keys.
+			else if (wall.keys != wall_key::none) {	//	Allow bots to open doors to which player has keys.
 				return powerup_flags & static_cast<PLAYER_FLAG>(wall.keys);
 			}
 		}
@@ -1967,7 +1964,7 @@ static unsigned openable_doors_in_segment(fvcwallptr &vcwallptr, const shared_se
 			auto &w = *vcwallptr(wall_num);
 			if (w.type != WALL_DOOR)
 				continue;
-			if (w.keys != KEY_NONE)
+			if (w.keys != wall_key::none)
 				continue;
 			if (w.state != WALL_DOOR_CLOSED)
 				continue;
@@ -2222,7 +2219,7 @@ static void init_boss_segments(const segment_array &segments, const object &boss
 			{
 				const uint_fast32_t sidenum = es.idx;
 				const auto w = WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, segp, sidenum);
-				if ((w & WID_FLY_FLAG) || one_wall_hack)
+				if ((w & WALL_IS_DOORWAY_FLAG::fly) || one_wall_hack)
 				{
 					const auto csegnum = es.value;
 #if defined(DXX_BUILD_DESCENT_II)

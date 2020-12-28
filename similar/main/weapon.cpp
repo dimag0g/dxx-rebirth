@@ -52,6 +52,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "physfs-serial.h"
 
 #include "compiler-range_for.h"
+#include "d_enumerate.h"
 #include "d_levelstate.h"
 #include "partial_range.h"
 
@@ -59,10 +60,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 // NOTE: Now Vulcan and Gauss require ammo. -5/3/95 Yuan
 //ubyte	Default_primary_ammo_level[MAX_PRIMARY_WEAPONS] = {255, 0, 255, 255, 255};
 //ubyte	Default_secondary_ammo_level[MAX_SECONDARY_WEAPONS] = {3, 0, 0, 0, 0};
-
-constexpr std::integral_constant<uint8_t, 1> has_weapon_result::has_weapon_flag;
-constexpr std::integral_constant<uint8_t, 2> has_weapon_result::has_energy_flag;
-constexpr std::integral_constant<uint8_t, 4> has_weapon_result::has_ammo_flag;
 
 //	Convert primary weapons to indices in Weapon_info array.
 #if defined(DXX_BUILD_DESCENT_I)
@@ -117,6 +114,58 @@ weapon_info_array Weapon_info;
 }
 namespace dcx {
 unsigned N_weapon_types;
+
+namespace {
+
+template <typename cycle_weapon_state>
+struct weapon_reorder_menu_items
+{
+	std::array<newmenu_item, cycle_weapon_state::max_weapons + 1> menu_items;
+	weapon_reorder_menu_items();
+};
+
+template <typename cycle_weapon_state>
+struct weapon_reorder_menu : weapon_reorder_menu_items<cycle_weapon_state>, reorder_newmenu
+{
+	using weapon_reorder_menu_items<cycle_weapon_state>::menu_items;
+	weapon_reorder_menu(grs_canvas &src) :
+		reorder_newmenu(menu_title{cycle_weapon_state::reorder_title}, menu_subtitle{"Shift+Up/Down arrow to move item"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(menu_items, 0), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
+};
+
+template <typename cycle_weapon_state>
+weapon_reorder_menu_items<cycle_weapon_state>::weapon_reorder_menu_items()
+{
+	for (auto &&[mi, i] : enumerate(menu_items))
+	{
+		const auto o = cycle_weapon_state::get_weapon_by_order_slot(i);
+		mi.value = o;
+		nm_set_item_menu(mi, cycle_weapon_state::get_weapon_name(o));
+	}
+}
+
+template <typename cycle_weapon_state>
+int weapon_reorder_menu<cycle_weapon_state>::subfunction_handler(const d_event &event)
+{
+	switch(event.type)
+	{
+		case EVENT_KEY_COMMAND:
+			event_key_command(event);
+			break;
+		case EVENT_WINDOW_CLOSE:
+			for (auto &&[mi, i] : enumerate(menu_items))
+				cycle_weapon_state::get_weapon_by_order_slot(i) = mi.value;
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
+
+}
+
 }
 
 // autoselect ordering
@@ -372,15 +421,6 @@ public:
 		return i == cycle_never_autoselect_below ? DXX_WEAPON_TEXT_NEVER_AUTOSELECT : SECONDARY_WEAPON_NAMES(i);
 	}
 };
-
-constexpr std::integral_constant<uint8_t, 255> cycle_weapon_state::cycle_never_autoselect_below;
-constexpr char cycle_weapon_state::DXX_WEAPON_TEXT_NEVER_AUTOSELECT[];
-constexpr std::integral_constant<uint_fast32_t, MAX_PRIMARY_WEAPONS> cycle_primary_state::max_weapons;
-constexpr char cycle_primary_state::reorder_title[];
-constexpr char cycle_primary_state::error_weapon_list_corrupt[];
-constexpr std::integral_constant<uint_fast32_t, MAX_SECONDARY_WEAPONS> cycle_secondary_state::max_weapons;
-constexpr char cycle_secondary_state::reorder_title[];
-constexpr char cycle_secondary_state::error_weapon_list_corrupt[];
 
 void cycle_weapon_state::report_runtime_error(const char *const p)
 {
@@ -897,31 +937,27 @@ int pick_up_secondary(player_info &player_info, int weapon_index, int count, con
 
 namespace {
 
-template <typename T>
+template <typename cycle_weapon_state>
 static void ReorderWeapon()
 {
-	std::array<newmenu_item, T::max_weapons + 1> m;
-	for (unsigned i = 0; i != m.size(); ++i)
-	{
-		const auto o = T::get_weapon_by_order_slot(i);
-		m[i].value = o;
-		nm_set_item_menu(m[i], T::get_weapon_name(o));
-	}
-	newmenu_doreorder(T::reorder_title, "Shift+Up/Down arrow to move item", m);
-	for (unsigned i = 0; i != m.size(); ++i)
-		T::get_weapon_by_order_slot(i) = m[i].value;
+	auto menu = window_create<weapon_reorder_menu<cycle_weapon_state>>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 }
 
-void ReorderPrimary ()
+namespace dsx {
+
+void ReorderPrimary()
 {
 	ReorderWeapon<cycle_primary_state>();
 }
 
-void ReorderSecondary ()
+void ReorderSecondary()
 {
 	ReorderWeapon<cycle_secondary_state>();
+}
+
 }
 
 namespace {
@@ -1636,10 +1672,14 @@ void do_seismic_stuff(void)
 DEFINE_BITMAP_SERIAL_UDT();
 
 #if defined(DXX_BUILD_DESCENT_I)
-DEFINE_SERIAL_UDT_TO_MESSAGE(weapon_info, w, (w.render, w.model_num, w.model_num_inner, w.persistent, w.flash_vclip, w.flash_sound, w.robot_hit_vclip, w.robot_hit_sound, w.wall_hit_vclip, w.wall_hit_sound, w.fire_count, w.ammo_usage, w.weapon_vclip, w.destroyable, w.matter, w.bounce, w.homing_flag, w.dum1, w.dum2, w.dum3, w.energy_usage, w.fire_wait, w.bitmap, w.blob_size, w.flash_size, w.impact_size, w.strength, w.speed, w.mass, w.drag, w.thrust, w.po_len_to_width_ratio, w.light, w.lifetime, w.damage_radius, w.picture));
+DEFINE_SERIAL_UDT_TO_MESSAGE(dsx::weapon_info, w, (w.render, w.model_num, w.model_num_inner, w.persistent, w.flash_vclip, w.flash_sound, w.robot_hit_vclip, w.robot_hit_sound, w.wall_hit_vclip, w.wall_hit_sound, w.fire_count, w.ammo_usage, w.weapon_vclip, w.destroyable, w.matter, w.bounce, w.homing_flag, w.dum1, w.dum2, w.dum3, w.energy_usage, w.fire_wait, w.bitmap, w.blob_size, w.flash_size, w.impact_size, w.strength, w.speed, w.mass, w.drag, w.thrust, w.po_len_to_width_ratio, w.light, w.lifetime, w.damage_radius, w.picture));
 #elif defined(DXX_BUILD_DESCENT_II)
 namespace {
-struct v2_weapon_info : weapon_info {};
+
+struct v2_weapon_info : weapon_info
+{
+};
+
 }
 
 template <typename Accessor>

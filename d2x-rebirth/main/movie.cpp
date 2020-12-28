@@ -327,11 +327,10 @@ window_event_result movie::event_handler(const d_event &event)
 			// If PAUSE pressed, then pause movie
 			if ((key == KEY_PAUSE) || (key == KEY_COMMAND + KEY_P))
 			{
-				if (auto pause_window = std::make_unique<movie_pause_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT))
+				if (auto pause_window = window_create<movie_pause_window>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT))
 				{
+					(void)pause_window;
 					MVE_rmHoldMovie();
-					pause_window->send_creation_events();
-					pause_window.release();
 				}
 				return window_event_result::handled;
 			}
@@ -387,14 +386,7 @@ int RunMovie(const char *const filename, const char *const subtitles, const int 
 		return MOVIE_NOT_PLAYED;
 	}
 	const auto reshow = hide_menus();
-	auto wind = std::make_unique<movie>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	if (!wind)
-	{
-		if (reshow)
-			show_menus();
-		return MOVIE_NOT_PLAYED;
-	}
-	wind->send_creation_events();
+	auto wind = window_create<movie>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 	init_subtitles(wind->SubtitleState, subtitles);
 
 
@@ -414,7 +406,7 @@ int RunMovie(const char *const filename, const char *const subtitles, const int 
 
 	if (MVE_rmPrepMovie(wind->pMovie, filehndl.get(), dx, dy, track)) {
 		Int3();
-		window_close(wind.get());
+		window_close(wind);
 		if (reshow)
 			show_menus();
 		return MOVIE_NOT_PLAYED;
@@ -626,7 +618,7 @@ static void draw_subtitles(const d_subtitle_state &SubtitleState, const int fram
 	if (frame_num == 0) {
 		num_active_subtitles = 0;
 		next_subtitle = 0;
-		gr_set_curfont(*grd_curcanv, GAME_FONT);
+		gr_set_curfont(*grd_curcanv, *GAME_FONT);
 		gr_set_fontcolor(*grd_curcanv, 255, -1);
 	}
 

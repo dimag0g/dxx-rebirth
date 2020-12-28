@@ -584,7 +584,7 @@ static imsegidx_t pick_connected_drop_segment(const segment_array &Segments, fvc
 	}
 	//bail if not far enough from original position
 	const auto &&tempv = compute_segment_center(vcvertptr, sseg);
-	if (find_connected_distance(player_pos, player_seg, tempv, segp, -1, WID_FLY_FLAG) < static_cast<fix>(i2f(20) * cur_drop_depth))
+	if (find_connected_distance(player_pos, player_seg, tempv, segp, -1, WALL_IS_DOORWAY_FLAG::fly) < static_cast<fix>(i2f(20) * cur_drop_depth))
 		return segment_none;
 	return segnum;
 }
@@ -964,6 +964,8 @@ imobjptridx_t drop_powerup(const d_vclip_array &Vclip, int id, const unsigned nu
 
 static imobjptridx_t drop_robot_egg(const int type, const int id, const unsigned num, const vms_vector &init_vel, const vms_vector &pos, const vmsegptridx_t segnum)
 {
+	if (!num)
+		return object_none;
 	switch (type)
 	{
 		case OBJ_POWERUP:

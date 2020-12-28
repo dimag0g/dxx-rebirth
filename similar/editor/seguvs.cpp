@@ -48,16 +48,20 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "d_zip.h"
 
 namespace dcx {
+namespace {
 static void cast_all_light_in_mine(int quick_flag);
+}
 }
 //--rotate_uvs-- vms_vector Rightvec;
 
 #define	MAX_LIGHT_SEGS 16
 
+namespace {
+
 //	---------------------------------------------------------------------------------------------
 //	Scan all polys in all segments, return average light value for vnum.
 //	segs = output array for segments containing vertex, terminated by -1.
-static fix get_average_light_at_vertex(int vnum, segnum_t *segs)
+static fix get_average_light_at_vertex(const vertnum_t vnum, segnum_t *segs)
 {
 	fix	total_light;
 	int	num_occurrences;
@@ -109,7 +113,7 @@ static fix get_average_light_at_vertex(int vnum, segnum_t *segs)
 
 }
 
-static void set_average_light_at_vertex(int vnum)
+static void set_average_light_at_vertex(vertnum_t vnum)
 {
 	int	relvnum;
 	segnum_t	Segment_indices[MAX_LIGHT_SEGS];
@@ -162,6 +166,7 @@ static void set_average_light_on_side(const shared_segment &segp, const unsigned
 		{
 			set_average_light_at_vertex(segp.verts[v]);
 		}
+}
 
 }
 
@@ -194,6 +199,8 @@ int set_average_light_on_all_quick(void)
 
 	return 0;
 }
+
+namespace {
 
 //	---------------------------------------------------------------------------------------------
 //	Given a polygon, compress the uv coordinates so that they are as close to 0 as possible.
@@ -235,6 +242,8 @@ static void assign_default_lighting(unique_segment &segp)
 		assign_default_lighting_on_side(side.uvls);
 }
 
+}
+
 void assign_default_lighting_all(void)
 {
 	range_for (const auto &&segp, vmsegptr)
@@ -243,6 +252,8 @@ void assign_default_lighting_all(void)
 			assign_default_lighting(segp);
 	}
 }
+
+namespace {
 
 //	---------------------------------------------------------------------------------------------
 static void validate_uv_coordinates(unique_segment &segp)
@@ -272,6 +283,8 @@ static fix zhypot(fix a,fix b) {
 }
 #endif
 
+}
+
 //	---------------------------------------------------------------------------------------------
 //	Assign lighting value to side, a function of the normal vector.
 void assign_light_to_side(unique_side &s)
@@ -283,6 +296,8 @@ void assign_light_to_side(unique_side &s)
 fix	Stretch_scale_x = F1_0;
 fix	Stretch_scale_y = F1_0;
 
+namespace {
+
 //	---------------------------------------------------------------------------------------------
 //	Given u,v coordinates at two vertices, assign u,v coordinates to other two vertices on a side.
 //	(Actually, assign them to the coordinates in the faces.)
@@ -291,7 +306,6 @@ fix	Stretch_scale_y = F1_0;
 static void assign_uvs_to_side(fvcvertptr &vcvertptr, const vmsegptridx_t segp, int sidenum, uvl *uva, uvl *uvb, int va, int vb)
 {
 	int			vlo,vhi;
-	unsigned v0, v1, v2, v3;
 	std::array<uvl, 4> uvls;
 	uvl ruvmag,fuvmag,uvlo,uvhi;
 	fix			fmag,mag01;
@@ -334,10 +348,10 @@ static void assign_uvs_to_side(fvcvertptr &vcvertptr, const vmsegptridx_t segp, 
 		fuvmag.v = uvhi.v - uvlo.v;
 	}
 
-	v0 = segp->verts[vp[vlo]];
-	v1 = segp->verts[vp[vhi]];
-	v2 = segp->verts[vp[(vhi+1)%4]];
-	v3 = segp->verts[vp[(vhi+2)%4]];
+	const auto v0 = segp->verts[vp[vlo]];
+	const auto v1 = segp->verts[vp[vhi]];
+	const auto v2 = segp->verts[vp[(vhi+1)%4]];
+	const auto v3 = segp->verts[vp[(vhi+2)%4]];
 
 	//	Compute right vector by computing orientation matrix from:
 	//		forward vector = vlo:vhi
@@ -391,6 +405,8 @@ static void assign_uvs_to_side(fvcvertptr &vcvertptr, const vmsegptridx_t segp, 
 		//	For all faces in side, copy uv coordinates from uvs array to face.
 		segp->unique_segment::sides[sidenum].uvls = uvls;
 	}
+}
+
 }
 
 
@@ -546,9 +562,12 @@ void assign_default_uvs_to_segment(const vmsegptridx_t segp)
 //--rotate_uvs-- 	uvb->v = uvb1.v + uvc.v;
 //--rotate_uvs-- }
 
+namespace {
 
 // --------------------------------------------------------------------------------------------------------------
-void med_assign_uvs_to_side(const vmsegptridx_t con_seg, const unsigned con_common_side, const cscusegment base_seg, const unsigned base_common_side, const unsigned abs_id1, const unsigned abs_id2)
+//	Assign u,v coordinates to con_seg, con_common_side from base_seg, base_common_side
+//	They are connected at the edge defined by the vertices abs_id1, abs_id2.
+static void med_assign_uvs_to_side(const vmsegptridx_t con_seg, const unsigned con_common_side, const cscusegment base_seg, const unsigned base_common_side, const vertnum_t abs_id1, const vertnum_t abs_id2)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
@@ -608,7 +627,7 @@ void med_assign_uvs_to_side(const vmsegptridx_t con_seg, const unsigned con_comm
 //	Since we can attach any side of a segment to any side of another segment, and do so in each case in
 //	four different rotations (for a total of 6*6*4 = 144 ways), not having this nifty function will cause
 //	great confusion.
-static void get_side_ids(const shared_segment &base_seg, const shared_segment &con_seg, int base_side, int con_side, int abs_id1, int abs_id2, int *base_common_side, int *con_common_side)
+static void get_side_ids(const shared_segment &base_seg, const shared_segment &con_seg, int base_side, int con_side, const vertnum_t abs_id1, const vertnum_t abs_id2, int *base_common_side, int *con_common_side)
 {
 	int		v0;
 
@@ -661,7 +680,7 @@ static void get_side_ids(const shared_segment &base_seg, const shared_segment &c
 //	The two vertices abs_id1 and abs_id2 are the only two vertices common to the two sides.
 //	If uv_only_flag is 1, then don't assign texture map ids, only update the uv coordinates
 //	If uv_only_flag is -1, then ONLY assign texture map ids, don't update the uv coordinates
-static void propagate_tmaps_to_segment_side(const vcsegptridx_t base_seg, const int base_side, const vmsegptridx_t con_seg, const int con_side, const int abs_id1, const int abs_id2, const int uv_only_flag)
+static void propagate_tmaps_to_segment_side(const vcsegptridx_t base_seg, const int base_side, const vmsegptridx_t con_seg, const int con_side, const vertnum_t abs_id1, const vertnum_t abs_id2, const int uv_only_flag)
 {
 	int		base_common_side,con_common_side;
 
@@ -700,6 +719,8 @@ static void propagate_tmaps_to_segment_side(const vcsegptridx_t base_seg, const 
 			propagate_tmaps_to_segment_side(csegp, cside, con_seg, con_side, abs_id1, abs_id2, uv_only_flag);
 		}
 	}
+
+}
 
 }
 
@@ -781,6 +802,8 @@ int fix_bogus_uvs_on_side(void)
 	return 0;
 }
 
+namespace {
+
 static void fix_bogus_uvs_on_side1(const vmsegptridx_t sp, const unsigned sidenum, const int uvonly_flag)
 {
 	auto &uvls = sp->unique_segment::sides[sidenum].uvls;
@@ -799,6 +822,8 @@ static void fix_bogus_uvs_seg(const vmsegptridx_t segp)
 	}
 }
 
+}
+
 int fix_bogus_uvs_all(void)
 {
 	range_for (const auto &&segp, vmsegptridx)
@@ -809,6 +834,8 @@ int fix_bogus_uvs_all(void)
 	return 0;
 }
 
+namespace {
+
 // -----------------------------------------------------------------------------
 //	Segment base_seg is connected through side base_side to segment con_seg on con_side.
 //	For all walls in con_seg, find the wall in base_seg which shares an edge.  Copy tmap_num
@@ -817,17 +844,18 @@ int fix_bogus_uvs_all(void)
 //	segment to get the wall in the connected segment which shares the edge, and get tmap_num from there.
 static void propagate_tmaps_to_segment_sides(const vcsegptridx_t base_seg, const int base_side, const vmsegptridx_t con_seg, const int con_side, const int uv_only_flag)
 {
-	int		abs_id1,abs_id2;
 	int		v;
 
 	auto &base_vp = Side_to_verts[base_side];
 
 	// Do for each edge on connecting face.
 	for (v=0; v<4; v++) {
-                abs_id1 = base_seg->verts[static_cast<int>(base_vp[v])];
-                abs_id2 = base_seg->verts[static_cast<int>(base_vp[(v+1) % 4])];
+		const auto abs_id1 = base_seg->verts[static_cast<int>(base_vp[v])];
+		const auto abs_id2 = base_seg->verts[static_cast<int>(base_vp[(v+1) % 4])];
 		propagate_tmaps_to_segment_side(base_seg, base_side, con_seg, con_side, abs_id1, abs_id2, uv_only_flag);
 	}
+
+}
 
 }
 
@@ -880,6 +908,8 @@ fix	Magical_light_constant = (F1_0*16);
 // int	Seg0, Seg1;
 
 //int	Bugseg = 27;
+
+namespace {
 
 struct hash_info {
 	sbyte			flag, hit_type;
@@ -1199,6 +1229,8 @@ static void cast_all_light_in_mine(int quick_flag)
 	calim_zero_light_values();
 
 	calim_process_all_lights(quick_flag);
+}
+
 }
 
 }

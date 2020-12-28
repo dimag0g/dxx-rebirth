@@ -73,10 +73,7 @@ namespace {
 
 struct robot_dialog : UI_DIALOG
 {
-	explicit robot_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::unique_ptr<UI_GADGET_USERBOX> robotViewBox, containsViewBox;
 	std::unique_ptr<UI_GADGET_BUTTON> quitButton, prev_powerup_type, next_powerup_type, prev_powerup_id, next_powerup_id, prev_powerup_count, next_powerup_count, prev_robot_type, next_robot_type, next_segment, prev_object, next_object, delete_object, new_object, set_path;
 	std::array<std::unique_ptr<UI_GADGET_RADIO>, 6> initialMode;			//	Number of boxes, AI modes
@@ -523,7 +520,7 @@ int do_robot_dialog()
 	Cur_goody_count = 0;
 
 	// Open a window with a quit button
-	MainWindow = ui_create_dialog<robot_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
+	MainWindow = window_create<robot_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
 	return 1;
 }
 
@@ -836,12 +833,12 @@ int do_object_dialog()
 	Cur_goody_count = 0;
 
 	// Open a window with a quit button
-	MattWindow = ui_create_dialog<object_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG, *obj);
+	MattWindow = window_create<object_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG, *obj);
 	return 1;
 }
 
 object_dialog::object_dialog(short x, short y, short w, short h, enum dialog_flags flags, object &obj) :
-	UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
+	UI_DIALOG(x, y, w, h, flags)
 {
 	quitButton = ui_add_gadget_button(*this, 20, 286, 40, 32, "Done", NULL );
 	quitButton->hotkey = KEY_ENTER;

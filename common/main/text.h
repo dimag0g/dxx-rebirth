@@ -1258,11 +1258,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 	(dxx_text_ensure_simple_expr(&(u), TXT_NET_GAME_CLOSED))	\
 	)
 #define MENU_DIFFICULTY_TEXT(u)	(	\
-	((u) == 0) ? TXT_DIFFICULTY_1	:	\
-	((u) == 1) ? TXT_DIFFICULTY_2	:	\
-	((u) == 2) ? TXT_DIFFICULTY_3	:	\
-	((u) == 3) ? TXT_DIFFICULTY_4	:	\
-	((u) == 4) ? TXT_DIFFICULTY_5	:	\
+	((u) == Difficulty_0) ? TXT_DIFFICULTY_1	:	\
+	((u) == Difficulty_1) ? TXT_DIFFICULTY_2	:	\
+	((u) == Difficulty_2) ? TXT_DIFFICULTY_3	:	\
+	((u) == Difficulty_3) ? TXT_DIFFICULTY_4	:	\
+	((u) == Difficulty_4) ? TXT_DIFFICULTY_5	:	\
 		 /* &u is ill-formed when u is a literal number */	\
 	(dxx_text_ensure_simple_expr(NULL, TXT_DIFFICULTY_1))	\
 	)
@@ -1285,17 +1285,26 @@ void load_text(void);
 extern std::array<const char *, N_TEXT_STRINGS> Text_string;
 #endif
 
-static inline const char *dxx_gettext(unsigned expr, const char *fmt) __attribute_format_arg(2);
-static inline const char *dxx_gettext(unsigned expr, const char *fmt)
-{
 #ifdef USE_BUILTIN_ENGLISH_TEXT_STRINGS
-	(void)expr;
-	return fmt;
+/* Verify that A is convertible to the right type, then discard it.
+ *
+ * This path requires compiler support for statement expressions, since
+ * the expression must evaluate to the target string.  For optimal
+ * format string checking, the target string must not be behind a
+ * function call, since that will convert the expression from
+ * `const char[]` to `const char *` and, for some versions of gcc,
+ * cause the string to be considered a non-literal, even if the input B
+ * is a literal.
+ */
+#define dxx_gettext(A,B)	({ unsigned dxx_gettext = A;(void)dxx_gettext; B; })
 #else
-	(void)fmt;
+__attribute_format_arg(2)
+static constexpr const char *dxx_gettext(unsigned expr, const char *)
+{
 	return Text_string[expr];
-#endif
 }
+#endif
+
 }
 #endif
 

@@ -244,7 +244,7 @@ void jukebox_load()
 		public:
 			void operator()(const char *const p) const noexcept
 			{
-				PHYSFS_removeFromSearchPath(p);
+				PHYSFS_unmount(p);
 			}
 		};
 		std::unique_ptr<const char, PHYSFS_path_deleter> new_path;
@@ -265,9 +265,9 @@ void jukebox_load()
 			JukeboxSongs.list.reset(PHYSFSX_findFiles(p, jukebox_exts));
 		else
 		{
-			if (PHYSFSX_isNewPath(p))
+			if (!PHYSFS_getMountPoint(p))
 				new_path.reset(p);
-			PHYSFS_addToSearchPath(p, 0);
+			PHYSFS_mount(p, nullptr, 0);
 
 			// as mountpoints are no option (yet), make sure only files originating from GameCfg.CMLevelMusicPath are aded to the list.
 			JukeboxSongs.list.reset(PHYSFSX_findabsoluteFiles("", p, jukebox_exts));

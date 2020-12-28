@@ -74,18 +74,10 @@ extern struct object DemoRightExtra,DemoLeftExtra;
 namespace dsx {
 extern void newdemo_record_start_demo();
 extern void newdemo_record_start_frame(fix frame_time );
-}
-#endif
-#ifdef dsx
-#ifdef dsx
-namespace dsx {
 void newdemo_record_render_object(vmobjptridx_t  obj);
 void newdemo_record_viewer_object(vcobjptridx_t obj);
-}
-#endif
 icobjptridx_t newdemo_find_object(object_signature_t signature);
 void newdemo_record_kill_sound_linked_to_object(vcobjptridx_t);
-namespace dsx {
 void newdemo_start_playback(const char *filename);
 void newdemo_record_morph_frame(vcobjptridx_t);
 }
@@ -137,7 +129,7 @@ void newdemo_record_laser_level(laser_level old_level, laser_level new_level);
 namespace dsx {
 #if defined(DXX_BUILD_DESCENT_II)
 void newdemo_record_player_afterburner(fix afterburner);
-void newdemo_record_cloaking_wall(int front_wall_num, int back_wall_num, ubyte type, ubyte state, fix cloak_value, fix l0, fix l1, fix l2, fix l3);
+void newdemo_record_cloaking_wall(wallnum_t front_wall_num, wallnum_t back_wall_num, ubyte type, ubyte state, fix cloak_value, fix l0, fix l1, fix l2, fix l3);
 void newdemo_record_guided_start();
 void newdemo_record_guided_end();
 void newdemo_record_secret_exit_blown(int truth);
@@ -171,6 +163,5 @@ extern int newdemo_get_percent_done();
 
 extern void newdemo_record_link_sound_to_object3( int soundno, objnum_t objnum, fix max_volume, fix  max_distance, int loop_start, int loop_end );
 int newdemo_count_demos();
-void newdemo_strip_frames(char *, int);
 
 #endif

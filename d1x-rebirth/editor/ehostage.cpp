@@ -63,10 +63,7 @@ namespace {
 
 struct hostage_dialog : UI_DIALOG
 {
-	explicit hostage_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::unique_ptr<UI_GADGET_BUTTON> quitButton, delete_object, new_object;
 	virtual window_event_result callback_handler(const d_event &) override;
 };
@@ -114,7 +111,7 @@ int do_hostage_dialog()
 	close_all_windows();
 	
 	// Open a window with a quit button
-	MainWindow = ui_create_dialog<hostage_dialog>(TMAPBOX_X + 10, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
+	MainWindow = window_create<hostage_dialog>(TMAPBOX_X + 10, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
 	return 1;
 }
 

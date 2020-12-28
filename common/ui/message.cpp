@@ -50,10 +50,7 @@ namespace {
 
 struct messagebox : UI_DIALOG
 {
-	explicit messagebox(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	const ui_messagebox_tie	*button = nullptr;
 	std::array<std::unique_ptr<UI_GADGET_BUTTON>, 10> button_g;
 	const char *text = nullptr;
@@ -183,7 +180,7 @@ int (ui_messagebox)( short xc, short yc, const char * text, const ui_messagebox_
 		y = h - height;
 	}
 
-	const auto dlg = ui_create_dialog<messagebox>(x, y, width, height, static_cast<dialog_flags>(DF_DIALOG | DF_MODAL));
+	const auto dlg = window_create<messagebox>(x, y, width, height, static_cast<dialog_flags>(DF_DIALOG | DF_MODAL));
 	dlg->button = &Button;
 	dlg->text = text;
 	dlg->choice = &choice;

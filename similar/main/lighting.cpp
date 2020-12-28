@@ -59,19 +59,21 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "wall.h"
 
 #include "compiler-range_for.h"
+#include "d_bitset.h"
 #include "d_levelstate.h"
 #include "partial_range.h"
 #include "d_range.h"
 
 using std::min;
 
-static int Do_dynamic_light=1;
-static int use_fcd_lighting;
-
 #define	HEADLIGHT_CONE_DOT	(F1_0*9/10)
 #define	HEADLIGHT_SCALE		(F1_0*10)
 
 namespace dcx {
+namespace {
+
+static int Do_dynamic_light=1;
+static int use_fcd_lighting;
 
 static void add_light_div(g3s_lrgb &d, const g3s_lrgb &light, const fix &scale)
 {
@@ -111,11 +113,13 @@ static fix compute_fireball_light_emission_intensity(const d_vclip_array &Vclip,
 }
 
 }
+}
 
 // ----------------------------------------------------------------------------------------------
 namespace dsx {
+namespace {
 
-static void apply_light(fvmsegptridx &vmsegptridx, const g3s_lrgb obj_light_emission, const vcsegptridx_t obj_seg, const vms_vector &obj_pos, const unsigned n_render_vertices, std::array<unsigned, MAX_VERTICES> &render_vertices, const std::array<segnum_t, MAX_VERTICES> &vert_segnum_list, const icobjptridx_t objnum)
+static void apply_light(fvmsegptridx &vmsegptridx, const g3s_lrgb obj_light_emission, const vcsegptridx_t obj_seg, const vms_vector &obj_pos, const unsigned n_render_vertices, std::array<vertnum_t, MAX_VERTICES> &render_vertices, const std::array<segnum_t, MAX_VERTICES> &vert_segnum_list, const icobjptridx_t objnum)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Vertices = LevelSharedVertexState.get_vertices();
@@ -193,7 +197,7 @@ static void apply_light(fvmsegptridx &vmsegptridx, const g3s_lrgb obj_light_emis
 
 				if (use_fcd_lighting && abs(obji_64) > F1_0*32)
 				{
-					dist = find_connected_distance(obj_pos, obj_seg, vertpos, vmsegptridx(vsegnum), n_render_vertices, WID_RENDPAST_FLAG|WID_FLY_FLAG);
+					dist = find_connected_distance(obj_pos, obj_seg, vertpos, vmsegptridx(vsegnum), n_render_vertices, WALL_IS_DOORWAY_FLAG::rendpast | WALL_IS_DOORWAY_FLAG::fly);
 					if (dist >= 0)
 						apply_light = 1;
 				}
@@ -237,12 +241,14 @@ static void apply_light(fvmsegptridx &vmsegptridx, const g3s_lrgb obj_light_emis
 	}
 }
 }
+}
 
 #define FLASH_LEN_FIXED_SECONDS (F1_0/3)
 #define FLASH_SCALE             (3*F1_0/FLASH_LEN_FIXED_SECONDS)
+namespace {
 
 // ----------------------------------------------------------------------------------------------
-static void cast_muzzle_flash_light(fvmsegptridx &vmsegptridx, int n_render_vertices, std::array<unsigned, MAX_VERTICES> &render_vertices, const std::array<segnum_t, MAX_VERTICES> &vert_segnum_list)
+static void cast_muzzle_flash_light(fvmsegptridx &vmsegptridx, int n_render_vertices, std::array<vertnum_t, MAX_VERTICES> &render_vertices, const std::array<segnum_t, MAX_VERTICES> &vert_segnum_list)
 {
 	fix64 current_time;
 	short time_since_flash;
@@ -281,9 +287,11 @@ const std::array<fix, 16> Obj_light_xlate{{0x1234, 0x3321, 0x2468, 0x1735,
 #undef compute_player_light_emission_intensity
 #undef compute_light_emission
 #endif
+}
 
 // ---------------------------------------------------------
 namespace dsx {
+namespace {
 
 #if defined(DXX_BUILD_DESCENT_II)
 static fix compute_player_light_emission_intensity(d_level_unique_headlight_state &LevelUniqueHeadlightState, const object &objp)
@@ -304,7 +312,7 @@ static fix compute_player_light_emission_intensity(d_level_unique_headlight_stat
 		const auto s = fix_sin(static_cast<fix>(GameTime64 >> 1) & 0xFFFF); // probably a bad way to do it
 		return fixmul((s + F1_0) >> 1, hoardlight);
 	}
-	return compute_player_light_emission_intensity(objp);
+	return ::dcx::compute_player_light_emission_intensity(objp);
 }
 #endif
 
@@ -504,14 +512,14 @@ static g3s_lrgb compute_light_emission(const d_level_shared_robot_info_state &Le
 	return white_light();
 }
 
+}
+
 // ----------------------------------------------------------------------------------------------
 void set_dynamic_light(render_state_t &rstate)
 {
-	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &Objects = LevelUniqueObjectState.Objects;
-	auto &Vertices = LevelSharedVertexState.get_vertices();
 	auto &vcobjptridx = Objects.vcptridx;
-	std::array<unsigned, MAX_VERTICES> render_vertices;
+	std::array<vertnum_t, MAX_VERTICES> render_vertices;
 	std::array<segnum_t, MAX_VERTICES> vert_segnum_list;
 	static fix light_time; 
 
@@ -527,7 +535,7 @@ void set_dynamic_light(render_state_t &rstate)
 		return;
 	light_time = light_time - (F1_0/60);
 
-	std::bitset<MAX_VERTICES> render_vertex_flags;
+	enumerated_bitset<MAX_VERTICES, vertnum_t> render_vertex_flags;
 
 	//	Create list of vertices that need to be looked at for setting of ambient light.
 	auto &Dynamic_light = LevelUniqueLightState.Dynamic_light;
@@ -538,11 +546,6 @@ void set_dynamic_light(render_state_t &rstate)
 			auto &vp = Segments[segnum].verts;
 			range_for (const auto vnum, vp)
 			{
-				if (vnum > Vertices.get_count() - 1)
-				{
-					Int3();		//invalid vertex number
-					continue;	//ignore it, and go on to next one
-				}
 				auto &&b = render_vertex_flags[vnum];
 				if (!b)
 				{
@@ -584,6 +587,8 @@ void toggle_headlight_active(object &player)
 	}
 }
 
+namespace {
+
 static fix compute_headlight_light_on_object(const d_level_unique_headlight_state &LevelUniqueHeadlightState, const object_base &objp)
 {
 	fix	light;
@@ -609,14 +614,18 @@ static fix compute_headlight_light_on_object(const d_level_unique_headlight_stat
 	}
 	return light;
 }
+
+}
 #endif
 
 }
 
+namespace {
+
 //compute the average dynamic light in a segment.  Takes the segment number
-static g3s_lrgb compute_seg_dynamic_light(const std::array<g3s_lrgb, MAX_VERTICES> &Dynamic_light, const shared_segment &seg)
+static g3s_lrgb compute_seg_dynamic_light(const enumerated_array<g3s_lrgb, MAX_VERTICES, vertnum_t> &Dynamic_light, const shared_segment &seg)
 {
-	const auto &&op = [&Dynamic_light](g3s_lrgb r, const unsigned v) {
+	const auto &&op = [&Dynamic_light](g3s_lrgb r, const vertnum_t v) {
 		r.r += Dynamic_light[v].r;
 		r.g += Dynamic_light[v].g;
 		r.b += Dynamic_light[v].b;
@@ -631,6 +640,7 @@ static g3s_lrgb compute_seg_dynamic_light(const std::array<g3s_lrgb, MAX_VERTICE
 
 static std::array<g3s_lrgb, MAX_OBJECTS> object_light;
 static std::array<object_signature_t, MAX_OBJECTS> object_sig;
+}
 const object *old_viewer;
 static int reset_lighting_hack;
 #define LIGHT_RATE i2f(4) //how fast the light ramps up

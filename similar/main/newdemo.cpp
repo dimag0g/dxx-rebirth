@@ -306,6 +306,8 @@ static typename std::enable_if<std::is_integral<T>::value, int>::type newdemo_re
 	return _newdemo_read(buffer, elsize, nelem);
 }
 
+namespace dsx {
+
 icobjptridx_t newdemo_find_object(object_signature_t signature)
 {
 	auto &Objects = LevelUniqueObjectState.Objects;
@@ -317,6 +319,10 @@ icobjptridx_t newdemo_find_object(object_signature_t signature)
 	}
 	return object_none;
 }
+
+}
+
+namespace {
 
 static int _newdemo_write(const void *buffer, int elsize, int nelem )
 {
@@ -566,12 +572,15 @@ static void nd_read_shortpos(object_base &obj)
 		auto &vcvertptr = Vertices.vcptr;
 		extract_orient_from_segment(vcvertptr, obj.orient, vcsegptr(obj.segnum));
 	}
-
 }
 
 object *prev_obj=NULL;      //ptr to last object read in
 
+}
+
 namespace dsx {
+
+namespace {
 
 static uint16_t nd_get_object_signature(const vcobjptridx_t objp)
 {
@@ -1008,7 +1017,12 @@ static void nd_write_object(const vcobjptridx_t objp)
 	}
 
 }
+
 }
+
+}
+
+namespace {
 
 static void nd_record_meta(char (&buf)[7], const char *s)
 {
@@ -1037,6 +1051,8 @@ static void nd_rdt(char (&buf)[7])
 	if (const auto g = gmtime(&t))
 		if (const auto st = asctime(g))
 			nd_record_meta(buf, st);
+}
+
 }
 
 static void nd_rbe()
@@ -1144,9 +1160,7 @@ void newdemo_record_start_demo()
 	newdemo_record_oneframeevent_update(0);
 #endif
 }
-}
 
-namespace dsx {
 void newdemo_record_start_frame(fix frame_time )
 {
 	if (nd_record_v_no_space)
@@ -1198,9 +1212,7 @@ void newdemo_record_start_frame(fix frame_time )
 	}
 
 }
-}
 
-namespace dsx {
 void newdemo_record_render_object(const vmobjptridx_t obj)
 {
 	if (!nd_record_v_recordframe)
@@ -1217,9 +1229,7 @@ void newdemo_record_render_object(const vmobjptridx_t obj)
 	nd_write_byte(ND_EVENT_RENDER_OBJECT);
 	nd_write_object(obj);
 }
-}
 
-namespace dsx {
 void newdemo_record_viewer_object(const vcobjptridx_t obj)
 {
 	if (!nd_record_v_recordframe)
@@ -1272,13 +1282,14 @@ void newdemo_record_link_sound_to_object3( int soundno, objnum_t objnum, fix max
 	nd_write_int( loop_end );
 }
 
+namespace dsx {
 void newdemo_record_kill_sound_linked_to_object(const vcobjptridx_t objp)
 {
 	pause_game_world_time p;
 	nd_write_byte( ND_EVENT_KILL_SOUND_TO_OBJ );
 	nd_write_int(nd_get_object_signature(objp));
 }
-
+}
 
 void newdemo_record_wall_hit_process( segnum_t segnum, int side, int damage, int playernum )
 {
@@ -1611,14 +1622,12 @@ void newdemo_record_laser_level(const laser_level old_level, const laser_level n
 namespace dsx {
 
 #if defined(DXX_BUILD_DESCENT_II)
-void newdemo_record_cloaking_wall(int front_wall_num, int back_wall_num, ubyte type, ubyte state, fix cloak_value, fix l0, fix l1, fix l2, fix l3)
+void newdemo_record_cloaking_wall(wallnum_t front_wall_num, wallnum_t back_wall_num, ubyte type, ubyte state, fix cloak_value, fix l0, fix l1, fix l2, fix l3)
 {
-	Assert(front_wall_num <= 255 && back_wall_num <= 255);
-
 	pause_game_world_time p;
 	nd_write_byte(ND_EVENT_CLOAKING_WALL);
-	nd_write_byte(front_wall_num);
-	nd_write_byte(back_wall_num);
+	nd_write_byte(static_cast<uint8_t>(front_wall_num));
+	nd_write_byte(static_cast<uint8_t>(back_wall_num));
 	nd_write_byte(type);
 	nd_write_byte(state);
 	nd_write_byte(cloak_value);
@@ -1735,7 +1744,7 @@ static int newdemo_read_demo_start(enum purpose_type purpose)
 	if (purpose == PURPOSE_REWRITE)
 		nd_write_byte(c);
 	if ((c != ND_EVENT_START_DEMO) || nd_playback_v_bad_read) {
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_CORRUPT );
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_CORRUPT);
 		return 1;
 	}
 	nd_read_byte(&version);
@@ -1746,7 +1755,7 @@ static int newdemo_read_demo_start(enum purpose_type purpose)
 		shareware = 1;
 	else if (version < DEMO_VERSION) {
 		if (purpose == PURPOSE_CHOSE_PLAY) {
-			nm_messagebox( NULL, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD );
+			nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD);
 		}
 		return 1;
 	}
@@ -1758,22 +1767,22 @@ static int newdemo_read_demo_start(enum purpose_type purpose)
 	if ((game_type == DEMO_GAME_TYPE_SHAREWARE) && shareware)
 		;	// all good
 	else if (game_type != DEMO_GAME_TYPE) {
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD );
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD);
 
 		return 1;
 	}
 #elif defined(DXX_BUILD_DESCENT_II)
 	if (game_type < DEMO_GAME_TYPE) {
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s\n%s", TXT_CANT_PLAYBACK, TXT_RECORDED, "    In Descent: First Strike" );
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s\n%s", TXT_CANT_PLAYBACK, TXT_RECORDED, "    In Descent: First Strike");
 		return 1;
 	}
 	if (game_type != DEMO_GAME_TYPE) {
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s\n%s", TXT_CANT_PLAYBACK, TXT_RECORDED, "   In Unknown Descent version" );
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s\n%s", TXT_CANT_PLAYBACK, TXT_RECORDED, "   In Unknown Descent version");
 		return 1;
 	}
 	if (version < DEMO_VERSION) {
 		if (purpose == PURPOSE_CHOSE_PLAY) {
-			nm_messagebox( NULL, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD );
+			nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s", TXT_CANT_PLAYBACK, TXT_DEMO_OLD);
 		}
 		return 1;
 	}
@@ -1926,7 +1935,7 @@ static int newdemo_read_demo_start(enum purpose_type purpose)
 		if ((purpose != PURPOSE_REWRITE) && load_mission_by_name(mission_entry_predicate{current_mission}, mission_name_type::guess))
 		{
 			if (purpose == PURPOSE_CHOSE_PLAY) {
-				nm_messagebox( NULL, 1, TXT_OK, TXT_NOMISSION4DEMO, current_mission );
+				nm_messagebox(menu_title{nullptr}, 1, TXT_OK, TXT_NOMISSION4DEMO, current_mission);
 			}
 			return 1;
 		}
@@ -1939,7 +1948,7 @@ static int newdemo_read_demo_start(enum purpose_type purpose)
 		if (load_mission_by_name(mission_predicate, mission_name_type::guess))
 		{
 		if (purpose != PURPOSE_RANDOM_PLAY) {
-			nm_messagebox( NULL, 1, TXT_OK, TXT_NOMISSION4DEMO, current_mission );
+			nm_messagebox(menu_title{nullptr}, 1, TXT_OK, TXT_NOMISSION4DEMO, current_mission);
 		}
 		return 1;
 		}
@@ -3186,9 +3195,9 @@ static int newdemo_read_frame_information(int rewrite)
 			short l0,l1,l2,l3;
 
 			nd_read_byte(&type);
-			front_wall_num = type;
+			front_wall_num = wallnum_t{type};
 			nd_read_byte(&type);
-			back_wall_num = type;
+			back_wall_num = wallnum_t{type};
 			nd_read_byte(&type);
 			nd_read_byte(&state);
 			nd_read_byte(&cloak_value);
@@ -3198,8 +3207,8 @@ static int newdemo_read_frame_information(int rewrite)
 			nd_read_short(&l3);
 			if (rewrite)
 			{
-				nd_write_byte(front_wall_num);
-				nd_write_byte(back_wall_num);
+				nd_write_byte(static_cast<uint8_t>(front_wall_num));
+				nd_write_byte(static_cast<uint8_t>(back_wall_num));
 				nd_write_byte(type);
 				nd_write_byte(state);
 				nd_write_byte(cloak_value);
@@ -3270,7 +3279,7 @@ static int newdemo_read_frame_information(int rewrite)
 					}
 				}
 				if ((loaded_level < Last_secret_level) || (loaded_level > Last_level)) {
-					nm_messagebox( NULL, 1, TXT_OK, "%s\n%s\n%s", TXT_CANT_PLAYBACK, TXT_LEVEL_CANT_LOAD, TXT_DEMO_OLD_CORRUPT );
+					nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s\n%s\n%s", TXT_CANT_PLAYBACK, TXT_LEVEL_CANT_LOAD, TXT_DEMO_OLD_CORRUPT);
 					Current_mission.reset();
 					return -1;
 				}
@@ -3384,7 +3393,7 @@ static int newdemo_read_frame_information(int rewrite)
 	}
 
 	if (nd_playback_v_bad_read) {
-		nm_messagebox( NULL, 1, TXT_OK, "%s %s", TXT_DEMO_ERR_READING, TXT_DEMO_OLD_CORRUPT );
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s %s", TXT_DEMO_ERR_READING, TXT_DEMO_OLD_CORRUPT);
 		Current_mission.reset();
 	}
 
@@ -3427,7 +3436,7 @@ window_event_result newdemo_goto_end(int to_rewrite)
 	if (!to_rewrite)
 	{
 		if ((level < Last_secret_level) || (level > Last_level)) {
-			nm_messagebox( NULL, 1, TXT_OK, "%s\n%s\n%s", TXT_CANT_PLAYBACK, TXT_LEVEL_CANT_LOAD, TXT_DEMO_OLD_CORRUPT );
+			nm_messagebox(menu_title{nullptr}, 1, TXT_OK, "%s\n%s\n%s", TXT_CANT_PLAYBACK, TXT_LEVEL_CANT_LOAD, TXT_DEMO_OLD_CORRUPT);
 			Current_mission.reset();
 			newdemo_stop_playback();
 			return window_event_result::close;
@@ -3914,7 +3923,7 @@ void newdemo_start_recording()
 	if (!outfile)
 	{
 		Newdemo_state = ND_STATE_NORMAL;
-		nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_OK), "Cannot open demo temp file");
+		nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie(TXT_OK), menu_subtitle{"Cannot open demo temp file"});
 	}
 	else
 		newdemo_record_start_demo();
@@ -4098,23 +4107,21 @@ void newdemo_stop_recording()
 try_again:
 	;
 
-	Newmenu_allowed_chars = demoname_allowed_chars;
 	if (guess_demo_name(filename))
 	{
 	}
 	else if (!nd_record_v_no_space) {
 		std::array<newmenu_item, 1> m{{
-			nm_item_input(filename),
+			nm_item_input(filename, demoname_allowed_chars),
 		}};
-		exit = newmenu_do( NULL, TXT_SAVE_DEMO_AS, m, unused_newmenu_subfunction, unused_newmenu_userdata );
+		exit = newmenu_do2(menu_title{nullptr}, menu_subtitle{TXT_SAVE_DEMO_AS}, m, unused_newmenu_subfunction, unused_newmenu_userdata);
 	} else if (nd_record_v_no_space == 2) {
 		std::array<newmenu_item, 2> m{{
 			nm_item_text(TXT_DEMO_SAVE_NOSPACE),
-			nm_item_input(filename),
+			nm_item_input(filename, demoname_allowed_chars),
 		}};
-		exit = newmenu_do( NULL, NULL, m, unused_newmenu_subfunction, unused_newmenu_userdata );
+		exit = newmenu_do2(menu_title{nullptr}, menu_subtitle{nullptr}, m, unused_newmenu_subfunction, unused_newmenu_userdata);
 	}
-	Newmenu_allowed_chars = NULL;
 
 	if (exit == -2) {                   // got bumped out from network menu
 		char save_file[PATH_MAX];
@@ -4142,7 +4149,7 @@ try_again:
 			break;
 		if (!isalnum(c) && c != '_' && c != '-' && c != '.')
 		{
-			nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_CONTINUE), TXT_DEMO_USE_LETTERS);
+			nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie(TXT_CONTINUE), menu_subtitle{TXT_DEMO_USE_LETTERS});
 			goto try_again;
 		}
 	}
@@ -4337,72 +4344,12 @@ int newdemo_swap_endian(const char *filename)
 
 read_error:
 	{
-		nm_messagebox( NULL, 1, TXT_OK, complete ? "Demo %s converted%s" : "Error converting demo\n%s\n%s", filename,
+		nm_messagebox(menu_title{nullptr}, 1, TXT_OK, complete ? "Demo %s converted%s" : "Error converting demo\n%s\n%s", filename,
 					  complete ? "" : (nd_playback_v_at_eof ? TXT_DEMO_CORRUPT : PHYSFS_getLastError()));
 	}
 
 	return nd_playback_v_at_eof;
 }
-
-#ifndef NDEBUG
-
-#define BUF_SIZE 16384
-
-void newdemo_strip_frames(char *outname, int bytes_to_strip)
-{
-	char *buf;
-	int read_elems, bytes_back;
-	int trailer_start, loc1, loc2, stop_loc, bytes_to_read;
-	short last_frame_length;
-
-	const auto &&outfp = PHYSFSX_openWriteBuffered(outname);
-	if (!outfp) {
-		nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_OK), "Can't open output file");
-		newdemo_stop_playback();
-		return;
-	}
-	MALLOC(buf, char, BUF_SIZE);
-	if (buf == NULL) {
-		nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_OK), "Can't malloc output buffer");
-		newdemo_stop_playback();
-		return;
-	}
-	newdemo_goto_end(0);
-	trailer_start = PHYSFS_tell(infile);
-	PHYSFS_seek(infile, PHYSFS_tell(infile) + 11);
-	bytes_back = 0;
-	while (bytes_back < bytes_to_strip) {
-		loc1 = PHYSFS_tell(infile);
-		newdemo_back_frames(1);
-		loc2 = PHYSFS_tell(infile);
-		bytes_back += (loc1 - loc2);
-	}
-	PHYSFS_seek(infile, PHYSFS_tell(infile) - 10);
-	nd_read_short(&last_frame_length);
-	PHYSFS_seek(infile, PHYSFS_tell(infile) - 3);
-	stop_loc = PHYSFS_tell(infile);
-	PHYSFS_seek(infile, 0);
-	while (stop_loc > 0) {
-		if (stop_loc < BUF_SIZE)
-			bytes_to_read = stop_loc;
-		else
-			bytes_to_read = BUF_SIZE;
-		read_elems = PHYSFS_read(infile, buf, 1, bytes_to_read);
-		PHYSFS_write(outfp, buf, 1, read_elems);
-		stop_loc -= read_elems;
-	}
-	stop_loc = PHYSFS_tell(outfp);
-	PHYSFS_seek(infile, trailer_start);
-	while ((read_elems = PHYSFS_read(infile, buf, 1, BUF_SIZE)) != 0)
-		PHYSFS_write(outfp, buf, 1, read_elems);
-	PHYSFS_seek(outfp, stop_loc);
-	PHYSFS_seek(outfp, PHYSFS_tell(infile) + 1);
-	PHYSFS_write(outfp, &last_frame_length, 2, 1);
-	newdemo_stop_playback();
-
-}
-
-#endif
 
 #if defined(DXX_BUILD_DESCENT_II)
 static void nd_render_extras (ubyte which,const object &obj)

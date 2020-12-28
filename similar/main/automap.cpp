@@ -107,7 +107,7 @@ namespace {
 
 struct Edge_info
 {
-	std::array<unsigned, 2> verts;     // 8  bytes
+	std::array<vertnum_t, 2> verts;     // 8  bytes
 	std::array<uint8_t, 4> sides;     // 4  bytes
 	std::array<segnum_t, 4> segnum;    // 16 bytes  // This might not need to be stored... If you can access the normals of a side.
 	ubyte flags;        // 1  bytes  // See the EF_??? defines above.
@@ -278,6 +278,71 @@ static void recompute_automap_segment_visibility(const d_level_unique_automap_st
 }
 
 #if defined(DXX_BUILD_DESCENT_II)
+struct marker_delete_are_you_sure_menu : std::array<newmenu_item, 2>, newmenu
+{
+	using array_type = std::array<newmenu_item, 2>;
+	d_level_unique_object_state &LevelUniqueObjectState;
+	segment_array &Segments;
+	d_marker_state &MarkerState;
+	marker_delete_are_you_sure_menu(grs_canvas &canvas, d_level_unique_object_state &LevelUniqueObjectState, segment_array &Segments, d_marker_state &MarkerState) :
+		array_type{{
+			nm_item_menu(TXT_YES),
+			nm_item_menu(TXT_NO),
+		}},
+		newmenu(menu_title{nullptr}, menu_subtitle{"Delete Marker?"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(*static_cast<array_type *>(this), 0), canvas),
+		LevelUniqueObjectState(LevelUniqueObjectState),
+		Segments(Segments),
+		MarkerState(MarkerState)
+	{
+	}
+	virtual int subfunction_handler(const d_event &) override;
+	static std::pair<imobjidx_t *, game_marker_index> get_marker_object(d_marker_state &MarkerState);
+	void handle_selected_yes() const;
+};
+
+int marker_delete_are_you_sure_menu::subfunction_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_NEWMENU_SELECTED:
+		{
+			const auto citem = static_cast<const d_select_event &>(event).citem;
+			if (citem == 0)
+				/* User chose Yes */
+				handle_selected_yes();
+			/* The dialog should close after the user picks Yes or No.
+			 */
+			return 0;
+		}
+		default:
+			break;
+	}
+	return 0;
+}
+
+std::pair<imobjidx_t *, game_marker_index> marker_delete_are_you_sure_menu::get_marker_object(d_marker_state &MarkerState)
+{
+	const auto HighlightMarker = MarkerState.HighlightMarker;
+	if (!MarkerState.imobjidx.valid_index(HighlightMarker))
+		return {nullptr, HighlightMarker};
+	auto &mo = MarkerState.imobjidx[HighlightMarker];
+	return {mo == object_none ? nullptr : &mo, HighlightMarker};
+}
+
+void marker_delete_are_you_sure_menu::handle_selected_yes() const
+{
+	const auto [mo, HighlightMarker] = get_marker_object(MarkerState);
+	if (!mo)
+		/* Check that the selected marker is still a valid object. */
+		return;
+	/* FIXME: this event should be sent to other players
+	 * so that they remove the marker.
+	 */
+	obj_delete(LevelUniqueObjectState, Segments, LevelUniqueObjectState.Objects.vmptridx(std::exchange(*mo, object_none)));
+	MarkerState.message[HighlightMarker] = {};
+	MarkerState.HighlightMarker = game_marker_index::None;
+}
+
 void init_automap_colors(automap &am)
 {
 	::dcx::init_automap_colors(am);
@@ -758,8 +823,7 @@ static void draw_automap(fvcobjptr &vcobjptr, automap &am)
 	gr_set_default_canvas();
 	{
 		auto &canvas = *grd_curcanv;
-		if (am.automap_background.get_bitmap_data())
-			show_fullscr(canvas, am.automap_background);
+		show_fullscr(canvas, am.automap_background);
 		gr_set_fontcolor(canvas, BM_XRGB(20, 20, 20), -1);
 	{
 		int x, y;
@@ -948,12 +1012,9 @@ static void recompute_automap_segment_visibility(const d_level_unique_automap_st
 
 static window_event_result automap_key_command(const d_event &event, automap &am)
 {
-	auto &Objects = LevelUniqueObjectState.Objects;
 #if defined(DXX_BUILD_DESCENT_I) || !defined(NDEBUG)
+	auto &Objects = LevelUniqueObjectState.Objects;
 	auto &vmobjptr = Objects.vmptr;
-#endif
-#if defined(DXX_BUILD_DESCENT_II)
-	auto &vmobjptridx = Objects.vmptridx;
 #endif
 	int c = event_key_get(event);
 
@@ -1032,23 +1093,16 @@ static window_event_result automap_key_command(const d_event &event, automap &am
 			return window_event_result::handled;
 		case KEY_D+KEY_CTRLED:
 			{
-				const auto HighlightMarker = MarkerState.HighlightMarker;
-				if (!MarkerState.imobjidx.valid_index(HighlightMarker))
-					return window_event_result::handled;
-				auto &mo = MarkerState.imobjidx[HighlightMarker];
-				if (mo == object_none)
-					return window_event_result::handled;
-				gr_set_default_canvas();
-				if (nm_messagebox_str(nullptr, nm_messagebox_tie(TXT_YES, TXT_NO), "Delete Marker?") == 0)
+				if (const auto [mo, HighlightMarker] = marker_delete_are_you_sure_menu::get_marker_object(MarkerState); mo == nullptr)
 				{
-					/* FIXME: this event should be sent to other players
-					 * so that they remove the marker.
+					(void)HighlightMarker;
+					/* If the selected index is not a valid marker, do
+					 * not offer to delete anything.
 					 */
-					obj_delete(LevelUniqueObjectState, Segments, vmobjptridx(std::exchange(mo, object_none)));
-					MarkerState.message[HighlightMarker] = {};
-					MarkerState.HighlightMarker = game_marker_index::None;
+					return window_event_result::handled;
 				}
-				set_screen_mode(SCREEN_GAME);
+				auto menu = window_create<marker_delete_are_you_sure_menu>(grd_curscreen->sc_canvas, LevelUniqueObjectState, Segments, MarkerState);
+				(void)menu;
 			}
 			return window_event_result::handled;
 #ifndef RELEASE
@@ -1175,7 +1229,7 @@ void do_automap()
 	auto &Objects = LevelUniqueObjectState.Objects;
 	auto &vmobjptr = Objects.vmptr;
 	palette_array_t pal;
-	auto am = std::make_unique<automap>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	auto am = window_create<automap>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 	const auto max_edges = LevelSharedSegmentState.Num_segments * 12;
 	am->max_edges = max_edges;
 	am->edges = std::make_unique<Edge_info[]>(max_edges);
@@ -1219,19 +1273,16 @@ void do_automap()
 	// ZICO - code from above to show frame in OGL correctly. Redundant, but better readable.
 	// KREATOR - Now applies to all platforms so double buffering is supported
 	{
-		const auto pcx_error = pcx_read_bitmap(MAP_BACKGROUND_FILENAME, am->automap_background, pal);
+		const auto pcx_error = pcx_read_bitmap_or_default(MAP_BACKGROUND_FILENAME, am->automap_background, pal);
 		if (pcx_error != pcx_result::SUCCESS)
 			con_printf(CON_URGENT, DXX_STRINGIZE_FL(__FILE__, __LINE__, "automap: File %s - PCX error: %s"), MAP_BACKGROUND_FILENAME, pcx_errormsg(pcx_error));
-		else
-			gr_remap_bitmap_good(am->automap_background, pal, -1, -1);
+		gr_remap_bitmap_good(am->automap_background, pal, -1, -1);
 	}
 	init_automap_subcanvas(am->automap_view, grd_curscreen->sc_canvas);
 
 	gr_palette_load( gr_palette );
 	Automap_active = 1;
 	multi_send_msgsend_state(msgsend_automap);
-	am->send_creation_events();
-	am.release();
 }
 
 namespace {
@@ -1326,32 +1377,30 @@ void draw_all_edges(grs_canvas &canvas, automap &am)
 //==================================================================
 
 //finds edge, filling in edge_ptr. if found old edge, returns index, else return -1
-static std::pair<Edge_info &, unsigned> automap_find_edge(automap &am, const unsigned v0, const unsigned v1)
+static std::pair<Edge_info &, std::size_t> automap_find_edge(automap &am, const vertnum_t v0, const vertnum_t v1)
 {
-	long vv, evv;
-	int hash, oldhash;
+	const auto &&hash_object = std::hash<vertnum_t>{};
+	const auto initial_hash_slot = (hash_object(v0) ^ (hash_object(v1) << 10)) % am.max_edges;
 
-	vv = (v1<<16) + v0;
-
-	oldhash = hash = ((v0*5+v1) % am.max_edges);
-	for (;;)
+	for (auto current_hash_slot = initial_hash_slot;;)
 	{
-		auto &e = am.edges[hash];
+		auto &e = am.edges[current_hash_slot];
 		const auto ev0 = e.verts[0];
 		const auto ev1 = e.verts[1];
-		evv = (ev1<<16)+ev0;
 		if (e.num_faces == 0)
-			return {e, hash};
-		else if (evv == vv)
+			return {e, current_hash_slot};
+		if (v1 == ev1 && v0 == ev0)
 			return {e, UINT32_MAX};
 		else {
-			if (++hash==am.max_edges) hash = 0;
-			if (hash==oldhash) Error("Edge list full!");
+			if (++ current_hash_slot == am.max_edges)
+				current_hash_slot = 0;
+			if (current_hash_slot == initial_hash_slot)
+				throw std::runtime_error("edge list full: search wrapped without finding a free slot");
 		}
 	}
 }
 
-static void add_one_edge(automap &am, unsigned va, unsigned vb, const uint8_t color, const unsigned side, const segnum_t segnum, const uint8_t flags)
+static void add_one_edge(automap &am, vertnum_t va, vertnum_t vb, const uint8_t color, const unsigned side, const segnum_t segnum, const uint8_t flags)
 {
 	if (am.num_edges >= am.max_edges)
 	{
@@ -1400,7 +1449,7 @@ static void add_one_edge(automap &am, unsigned va, unsigned vb, const uint8_t co
 	e->flags |= flags;
 }
 
-static void add_one_unknown_edge(automap &am, unsigned va, unsigned vb)
+static void add_one_unknown_edge(automap &am, vertnum_t va, vertnum_t vb)
 {
 	if ( va > vb )	{
 		std::swap(va, vb);
@@ -1464,9 +1513,9 @@ static void add_segment_edges(fvcsegptr &vcsegptr, fvcwallptr &vcwallptr, automa
 			switch(w.type)
 			{
 			case WALL_DOOR:
-				if ((w.keys == KEY_BLUE && (color = am.wall_door_blue, true)) ||
-					(w.keys == KEY_GOLD && (color = am.wall_door_gold, true)) ||
-					(w.keys == KEY_RED && (color = am.wall_door_red, true)))
+				if ((w.keys == wall_key::blue && (color = am.wall_door_blue, true)) ||
+					(w.keys == wall_key::gold && (color = am.wall_door_gold, true)) ||
+					(w.keys == wall_key::red && (color = am.wall_door_red, true)))
 				{
 					no_fade = EF_NO_FADE;
 				} else if (!(WallAnims[w.clip_num].flags & WCF_HIDDEN)) {
@@ -1477,15 +1526,15 @@ static void add_segment_edges(fvcsegptr &vcsegptr, fvcwallptr &vcwallptr, automa
 						auto &wall = *vcwallptr(vcseg.sides[connected_side].wall_num);
 						switch (wall.keys)
 						{
-							case KEY_BLUE:
+							case wall_key::blue:
 								color = am.wall_door_blue;
 								no_fade = EF_NO_FADE;
 								break;
-							case KEY_GOLD:
+							case wall_key::gold:
 								color = am.wall_door_gold;
 								no_fade = EF_NO_FADE;
 								break;
-							case KEY_RED:
+							case wall_key::red:
 								color = am.wall_door_red;
 								no_fade = EF_NO_FADE;
 								break;
@@ -1502,7 +1551,7 @@ static void add_segment_edges(fvcsegptr &vcsegptr, fvcwallptr &vcwallptr, automa
 			case WALL_CLOSED:
 				// Make grates draw properly
 				// NOTE: In original D1, is_grate is 1, hidden_flag not used so grates never fade. I (zico) like this so I leave this alone for now. 
-				if (!(is_grate = WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, seg, sn) & WID_RENDPAST_FLAG))
+				if (!(is_grate = WALL_IS_DOORWAY(GameBitmaps, Textures, vcwallptr, seg, sn) & WALL_IS_DOORWAY_FLAG::rendpast))
 					hidden_flag = EF_SECRET;
 				color = am.wall_normal_color;
 				break;

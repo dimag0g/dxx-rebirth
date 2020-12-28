@@ -22,28 +22,41 @@
 // Exported functions
 #ifdef dsx
 namespace dsx {
+namespace multi {
+namespace udp {
+struct dispatch_table final : multi::dispatch_table
+{
+	virtual int objnum_is_past(objnum_t objnum) const override;
+	virtual void do_protocol_frame(int force, int listen) const override;
+	virtual window_event_result level_sync() const override;
+	virtual void send_endlevel_packet() const override;
+	virtual void kick_player(const _sockaddr &dump_addr, int why) const override;
+	virtual void disconnect_player(int playernum) const override;
+	virtual int end_current_level(int *secret) const override;
+	virtual void leave_game() const override;
+};
+
+extern const dispatch_table dispatch;
+int kmatrix_poll2(newmenu *menu, const d_event &event, const unused_newmenu_userdata_t *);
+void leave_game();
+}
+using udp::dispatch;
+}
+
 window_event_result net_udp_setup_game(void);
 }
 #endif
 void net_udp_manual_join_game();
 void net_udp_list_join_game();
-int net_udp_objnum_is_past(objnum_t objnum);
 #ifdef dsx
 namespace dsx {
-void net_udp_do_frame(int force, int listen);
 }
 #endif
 void net_udp_send_data(const uint8_t *ptr, unsigned len, int priority);
 #ifdef dsx
 namespace dsx {
-void net_udp_leave_game();
-int net_udp_endlevel(int *secret);
-int net_udp_kmatrix_poll2( newmenu *menu,const d_event &event, const unused_newmenu_userdata_t *);
 }
 #endif
-void net_udp_send_endlevel_packet();
-void net_udp_dump_player(const _sockaddr &dump_addr, int why);
-void net_udp_disconnect_player(int playernum);
 window_event_result net_udp_level_sync();
 void net_udp_send_mdata_direct(const ubyte *data, int data_len, int pnum, int priority);
 void net_udp_send_netgame_update();

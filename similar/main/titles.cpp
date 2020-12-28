@@ -177,23 +177,20 @@ static void show_title_screen(const char *filename)
 {
 	char new_filename[PATH_MAX] = "";
 
-	auto ts = std::make_unique<title_screen>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	auto ts = window_create<title_screen>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 
 	strcat(new_filename,filename);
 	filename = new_filename;
 
 	ts->timer = timer_query() + i2f(3);
-	const auto pcx_error = pcx_read_bitmap(filename, ts->title_bm, gr_palette);
+	const auto pcx_error = pcx_read_bitmap_or_default(filename, ts->title_bm, gr_palette);
 	if (pcx_error != pcx_result::SUCCESS)
 	{
 		con_printf(CON_URGENT, "%s:%u: error: loading briefing screen <%s> failed: PCX load error: %s (%u)", __FILE__, __LINE__, filename, pcx_errormsg(pcx_error), static_cast<unsigned>(pcx_error));
-		return;
 	}
 
 	gr_palette_load( gr_palette );
-	ts->send_creation_events();
 	event_process_all();
-	ts.release();
 }
 
 static void show_title_screen(const char *const filename, title_load_location /* from_hog_only */)
@@ -218,7 +215,9 @@ static void show_first_found_title_screen(const char *oem, const char *share, co
 namespace dsx {
 #if defined(DXX_BUILD_DESCENT_II)
 int intro_played;
+namespace {
 static int DefineBriefingBox(const grs_bitmap &, const char *&buf);
+}
 #endif
 
 void show_titles(void)
@@ -537,8 +536,6 @@ struct briefing : window
 	std::array<char, 16> background_name;
 };
 
-}
-
 static void briefing_init(briefing *br, short level_num)
 {
 	br->level_num = level_num;
@@ -687,6 +684,7 @@ static void put_char_delay(const grs_font &cv_font, briefing *const br, const ch
 }
 
 static void init_spinning_robot(grs_canvas &canvas, briefing &br);
+__attribute_warn_unused_result
 static int load_briefing_screen(grs_canvas &, briefing *br, const char *fname);
 
 // Process a character for the briefing,
@@ -775,41 +773,46 @@ static int briefing_process_char(grs_canvas &canvas, briefing *const br)
 #endif
 		} else if (ch=='Z') {
 #if defined(DXX_BUILD_DESCENT_II)
-			char fname[15];
-			int i;
-
+			std::array<char, 15> fname, fnameb;
 			br->got_z=1;
 			br->dumb_adjust=1;
-			i=0;
-			while ((fname[i]=*br->message) != '\n') {
-				i++;
-				br->message++;
-			}
-			fname[i]=0;
-			if (*br->message != 10)
-				while (*br->message++ != 10)    //  Get and drop eoln
-					;
-
+			auto p = br->message;
+			const auto begin_filename = p;
+			const char *separator = nullptr;
+			for (char c; (c = *p) != 0 && c != '\n'; ++p)
 			{
-				char fname2[15];
-
-				i=0;
-				while (fname[i]!='.') {
-					fname2[i] = fname[i];
-					i++;
-				}
-				fname2[i++]='b';
-				fname2[i++]='.';
-				fname2[i++]='p';
-				fname2[i++]='c';
-				fname2[i++]='x';
-				fname2[i++]=0;
-
-				if ((HIRESMODE && PHYSFSX_exists(fname2,1)) || !PHYSFSX_exists(fname,1))
-					strcpy(fname,fname2);
-				load_briefing_screen(*grd_curcanv, br, fname);
+				if (c == '.' && !separator)
+					separator = p;
 			}
-
+			const auto end_filename = p;
+			/* This is inconsistent, but preserves the original game
+			 * logic.
+			 */
+			if (*p != 10)
+				while (*p++ != 10)    //  Get and drop eoln
+					;
+			br->message = p;
+			/* In the original game, if a separator was not found, the
+			 * game would have undefined behavior.  Define that case to
+			 * mean an early return.
+			 */
+			if (!separator)
+				return 1;
+			const std::size_t idx_end_filename = std::distance(begin_filename, end_filename);
+			if (idx_end_filename >= fname.size() - 1)
+				return 1;
+			const std::size_t idx_separator = std::distance(begin_filename, separator);
+			if (idx_separator >= fnameb.size() - 6)
+				return 1;
+			fname[idx_end_filename] = 0;
+			std::copy(begin_filename, end_filename, std::begin(fname));
+			std::copy_n(begin_filename, idx_separator, std::begin(fnameb));
+			std::copy_n("b.pcx", 6, std::next(std::begin(fnameb), idx_separator));
+			auto &use_fname = ((HIRESMODE && PHYSFSX_exists(fnameb.data(), 1)) || !PHYSFSX_exists(fname.data(), 1))
+				? fnameb
+				: fname;
+			if (!load_briefing_screen(*grd_curcanv, br, use_fname.data()))
+				return 1;
 #endif
 		} else if (ch == 'B') {
 			std::array<char, 32> bitmap_name;
@@ -839,7 +842,8 @@ static int briefing_process_char(grs_canvas &canvas, briefing *const br)
 			if (!br->got_z) {
 				Int3(); // Hey ryan!!!! You gotta load a screen before you start
 				// printing to it! You know, $Z !!!
-				load_briefing_screen(*grd_curcanv, br, HIRESMODE ? "end01b.pcx" : "end01.pcx");
+				if (!load_briefing_screen(*grd_curcanv, br, HIRESMODE ? "end01b.pcx" : "end01.pcx"))
+					return 1;
 			}
 
 			br->chattering = 0;
@@ -949,10 +953,12 @@ static int briefing_process_char(grs_canvas &canvas, briefing *const br)
 			if (br->text_y > br->screen->text_uly + br->screen->text_height) {
 #if defined(DXX_BUILD_DESCENT_I)
 				const auto descent_hog_size = PHYSFSX_fsize("descent.hog");
-				load_briefing_screen(*grd_curcanv, br, get_d1_briefing_screens(descent_hog_size)[br->cur_screen].bs_name);
+				auto &bs = get_d1_briefing_screens(descent_hog_size)[br->cur_screen];
 #elif defined(DXX_BUILD_DESCENT_II)
-				load_briefing_screen(*grd_curcanv, br, Briefing_screens[br->cur_screen].bs_name);
+				auto &bs = Briefing_screens[br->cur_screen];
 #endif
+				if (!load_briefing_screen(*grd_curcanv, br, bs.bs_name))
+					return 1;
 				br->text_x = br->screen->text_ulx;
 				br->text_y = br->screen->text_uly;
 			}
@@ -967,7 +973,8 @@ static int briefing_process_char(grs_canvas &canvas, briefing *const br)
 			LevelError("briefing wrote to screen without using $Z to load a screen; loading default.");
 			//Int3(); // Hey ryan!!!! You gotta load a screen before you start
 			// printing to it! You know, $Z !!!
-			load_briefing_screen(*grd_curcanv, br, HIRESMODE ? "end01b.pcx" : "end01.pcx");
+			if (!load_briefing_screen(*grd_curcanv, br, HIRESMODE ? "end01b.pcx" : "end01.pcx"))
+				return 1;
 		}
 #endif
 		put_char_delay(game_font, br, ch);
@@ -1027,6 +1034,8 @@ static void set_briefing_fontcolor(briefing &br)
 }
 }
 
+}
+
 static void redraw_messagestream(grs_canvas &canvas, const grs_font &cv_font, const msgstream &stream, unsigned &lastcolor)
 {
 	char msgbuf[2] = {stream.ch, 0};
@@ -1039,6 +1048,7 @@ static void redraw_messagestream(grs_canvas &canvas, const grs_font &cv_font, co
 }
 
 namespace dsx {
+namespace {
 static void flash_cursor(grs_canvas &canvas, const grs_font &cv_font, briefing *const br, const int cursor_flag)
 {
 	if (cursor_flag == 0)
@@ -1166,6 +1176,8 @@ static void show_animated_bitmap(grs_canvas &canvas, briefing *br)
 
 }
 
+}
+
 //-----------------------------------------------------------------------------
 static void show_briefing_bitmap(grs_canvas &canvas, grs_bitmap *bmp)
 {
@@ -1180,6 +1192,7 @@ static void show_briefing_bitmap(grs_canvas &canvas, grs_bitmap *bmp)
 
 //-----------------------------------------------------------------------------
 namespace dsx {
+namespace {
 static void init_spinning_robot(grs_canvas &canvas, briefing &br) //(int x,int y,int w,int h)
 {
 	br.robot_canv = create_spinning_robot_sub_canvas(canvas);
@@ -1200,12 +1213,15 @@ static void show_spinning_robot_frame(briefing *br, int robot_num)
 //-----------------------------------------------------------------------------
 #define KEY_DELAY_DEFAULT       ((F1_0*20)/1000)
 
-static void init_new_page(briefing *br)
+__attribute_warn_unused_result
+static int init_new_page(briefing *br)
 {
 	br->new_page = 0;
 	br->robot_num = -1;
 
-	load_briefing_screen(*grd_curcanv, br, br->background_name.data());
+	const auto r = load_briefing_screen(*grd_curcanv, br, br->background_name.data());
+	if (!r)
+		return r;
 	br->text_x = br->screen->text_ulx;
 	br->text_y = br->screen->text_uly;
 
@@ -1222,6 +1238,7 @@ static void init_new_page(briefing *br)
 
 	br->start_time = 0;
 	br->delay_count = KEY_DELAY_DEFAULT;
+	return r;
 }
 
 #if defined(DXX_BUILD_DESCENT_II)
@@ -1307,7 +1324,7 @@ static int load_briefing_screen(grs_canvas &canvas, briefing *const br, const ch
 		bald_guy_load("btexture.xxx", br->background, gr_palette) == pcx_result::SUCCESS)
 	{
 	}
-	else if ((pcx_error = pcx_read_bitmap(fname2, br->background, gr_palette)) != pcx_result::SUCCESS)
+	else if ((pcx_error = pcx_read_bitmap_or_default(fname2, br->background, gr_palette)) != pcx_result::SUCCESS)
 	{
 		con_printf(CON_URGENT, "%s:%u: error: loading briefing screen <%s> failed: PCX load error: %s (%u)", __FILE__, __LINE__, fname2, pcx_errormsg(pcx_error), static_cast<unsigned>(pcx_error));
 	}
@@ -1343,7 +1360,7 @@ static int load_briefing_screen(grs_canvas &canvas, briefing *const br, const ch
 	}
 
 	pcx_result pcx_error;
-	if ((pcx_error = pcx_read_bitmap(fname, br->background, gr_palette)) != pcx_result::SUCCESS)
+	if ((pcx_error = pcx_read_bitmap_or_default(fname, br->background, gr_palette)) != pcx_result::SUCCESS)
 	{
 		con_printf(CON_URGENT, "%s:%u: error: loading briefing screen <%s> failed: PCX load error: %s (%u)", __FILE__, __LINE__, fname, pcx_errormsg(pcx_error), static_cast<unsigned>(pcx_error));
 		return 0;
@@ -1389,6 +1406,7 @@ static void free_briefing_screen(briefing *br)
 		br->screen.reset();
 }
 
+__attribute_warn_unused_result
 static int new_briefing_screen(briefing *br, int first)
 {
 	br->new_screen = 0;
@@ -1491,6 +1509,7 @@ static int new_briefing_screen(briefing *br, int first)
 	return 1;
 }
 
+}
 
 //-----------------------------------------------------------------------------
 window_event_result briefing::event_handler(const d_event &event)
@@ -1515,7 +1534,10 @@ window_event_result briefing::event_handler(const d_event &event)
 					}
 				}
 				else if (this->new_page)
-					init_new_page(this);
+				{
+					if (!init_new_page(this))
+						return window_event_result::close;
+				}
 				else
 					this->delay_count = 0;
 				return window_event_result::handled;
@@ -1536,7 +1558,10 @@ window_event_result briefing::event_handler(const d_event &event)
 				}
 			}
 			else if (this->new_page)
-				init_new_page(this);
+			{
+				if (!init_new_page(this))
+					return window_event_result::close;
+			}
 			else
 				this->delay_count = 0;
 			return window_event_result::handled;
@@ -1570,7 +1595,10 @@ window_event_result briefing::event_handler(const d_event &event)
 						}
 					}
 					else if (this->new_page)
-						init_new_page(this);
+					{
+						if (!init_new_page(this))
+							return window_event_result::close;
+					}
 					break;
 			}
 			break;
@@ -1639,8 +1667,8 @@ void do_briefing_screens(const d_fname &filename, int level_num)
 	if (!*static_cast<const char *>(filename))
 		return;
 
-	auto br = std::make_unique<briefing>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
-	briefing_init(br.get(), level_num);
+	auto br = window_create<briefing>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	briefing_init(br, level_num);
 
 	if (!load_screen_text(filename, br->text))
 	{
@@ -1666,16 +1694,14 @@ void do_briefing_screens(const d_fname &filename, int level_num)
 
 	gr_set_default_canvas();
 
-	br->send_creation_events();
-	if (!new_briefing_screen(br.get(), 1))
+	if (!new_briefing_screen(br, 1))
 	{
-		window_close(br.get());
+		window_close(br);
 	}
 	else
 	// Stay where we are in the stack frame until briefing done
 	// Too complicated otherwise
 		event_process_all();
-	br.release();
 }
 
 void do_end_briefing_screens(const d_fname &filename)

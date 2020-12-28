@@ -120,6 +120,15 @@ static movement_type_name &get_movement_type(const typename object_base::movemen
 	}
 }
 
+static void info_display_object_placement(grs_canvas &canvas, const grs_font &cv_font, const vcobjptridx_t &obj)
+{
+	gr_uprintf(canvas, cv_font, 0, 0, "Object id: %4d\n", obj.get_unchecked_index());
+	auto &o = *obj;
+	gr_uprintf(canvas, cv_font, 0, 16, "Type: %s\n", get_object_type(o.type));
+	gr_uprintf(canvas, cv_font, 0, 32, "Movmnt: %s\n", get_movement_type(o.movement_source));
+	gr_uprintf(canvas, cv_font, 0, 48, "Cntrl: %s\n", get_control_type(o.control_source));
+}
+
 }
 
 }
@@ -162,34 +171,17 @@ static ai_type_name &get_ai_behavior(ai_behavior num)
 }
 
 //	---------------------------------------------------------------------------------------------------
-static void info_display_object_placement(grs_canvas &canvas, int show_all)
+static void info_display_object_placement(grs_canvas &canvas, const grs_font &cv_font)
 {
-	auto &Objects = LevelUniqueObjectState.Objects;
-	static	int	old_Cur_object_index;
-	static	int	old_type;
-	static typename object::movement_type old_movement_type;
-	static typename object::control_type old_control_type;
-	static ai_behavior old_mode;
-	if (init_info || show_all ||
-		( Cur_object_index != old_Cur_object_index) || 
-			( Objects[Cur_object_index].type != old_type) || 
-			( Objects[Cur_object_index].movement_source != old_movement_type) || 
-			( Objects[Cur_object_index].control_source != old_control_type) || 
-			( Objects[Cur_object_index].ctype.ai_info.behavior != old_mode) ) {
-
-		gr_uprintf(canvas, *canvas.cv_font, 0, 0, "Object id: %4d\n", Cur_object_index);
-		gr_uprintf(canvas, *canvas.cv_font, 0, 16, "Type: %s\n", get_object_type(Objects[Cur_object_index].type));
-		gr_uprintf(canvas, *canvas.cv_font, 0, 32, "Movmnt: %s\n", get_movement_type(Objects[Cur_object_index].movement_source));
-		gr_uprintf(canvas, *canvas.cv_font, 0, 48, "Cntrl: %s\n", get_control_type(Objects[Cur_object_index].control_source));
-		gr_uprintf(canvas, *canvas.cv_font, 0, 64, "Mode: %s\n", get_ai_behavior(Objects[Cur_object_index].ctype.ai_info.behavior));
-
-		old_Cur_object_index = Cur_object_index;
-		old_type = Objects[Cur_object_index].type;
-		old_movement_type = Objects[Cur_object_index].movement_source;
-		old_control_type = Objects[Cur_object_index].control_source;
-		old_mode = Objects[Cur_object_index].ctype.ai_info.behavior;
+	if (Cur_object_index == object_none)
+	{
+		gr_ustring(canvas, cv_font, 0, 0, "Object id: None\n");
+		return;
 	}
-
+	auto &Objects = LevelUniqueObjectState.Objects;
+	const auto &obj = Objects.vcptridx(Cur_object_index);
+	gr_uprintf(canvas, cv_font, 0, 64, "Mode: %s\n", get_ai_behavior(obj->ctype.ai_info.behavior));
+	::dcx::info_display_object_placement(canvas, cv_font, obj);
 }
 
 }
@@ -201,14 +193,8 @@ namespace dcx {
 namespace {
 
 //	---------------------------------------------------------------------------------------------------
-static void info_display_segsize(grs_canvas &canvas, int show_all)
+static void info_display_segsize(grs_canvas &canvas, const grs_font &cv_font)
 {
-	static	int	old_SegSizeMode;
-	if (init_info | show_all) {
-		old_SegSizeMode = -2;
-	}
-
-	if (old_SegSizeMode != SegSizeMode  ) {
 		const char *name;
 		switch (SegSizeMode) {
 			case SEGSIZEMODE_FREE:		name = "free   ";	break;
@@ -217,12 +203,9 @@ static void info_display_segsize(grs_canvas &canvas, int show_all)
 			case SEGSIZEMODE_EDGE:		name = "edge   ";	break;
 			case SEGSIZEMODE_VERTEX:	name = "vertex ";	break;
 			default:
-				Error("Illegal value for SegSizeMode in info.c/info_display_segsize\n");
+				throw std::runtime_error("illegal value for SegSizeMode in " __FILE__ "/info_display_segsize");
 		}
-		old_SegSizeMode = SegSizeMode;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 0, "Mode: %s\n", name);
-	}
-
+	gr_uprintf(canvas, cv_font, 0, 0, "Mode: %s\n", name);
 }
 
 //	------------------------------------------------------------------------------------
@@ -241,115 +224,69 @@ namespace dsx {
 namespace {
 
 //	---------------------------------------------------------------------------------------------------
-static void info_display_default(grs_canvas &canvas, int show_all)
+static void info_display_default(grs_canvas &canvas, const grs_font &cv_font)
 {
 	auto &LevelSharedVertexState = LevelSharedSegmentState.get_vertex_state();
 	auto &TmapInfo = LevelUniqueTmapInfoState.TmapInfo;
-	static int old_Num_segments = -1;
-	static int old_Num_vertices = -1;
-	static int old_Num_objects = -1;
-	static int old_Cursegp_num = -1;
-	static int old_Curside = -1;
-	static int old_Cursegp_num_for_verts = -1;
-	static texture_index old_CurrentTexture = -1;
-	static int old_Num_walls = -1;
-	static int old_Num_triggers = -1;
 
-	if (init_info | show_all) {
+	{
 		init_info = 0;
-		old_Num_segments = -1;
-		old_Num_vertices = -1;
-		old_Num_objects = -1;
-		old_Cursegp_num = -1;
-		old_Cursegp_num_for_verts = -1;
-		old_Curside = -1;
-		old_CurrentTexture = -1;
-		old_Num_walls = -1;
-		old_Num_triggers = -1;
 	}
 
 	gr_set_fontcolor(canvas, CBLACK, CWHITE);
 
 	//--------------- Number of segments ----------------
 
-	if (old_Num_segments != LevelSharedSegmentState.Num_segments)
-	{
-		old_Num_segments = LevelSharedSegmentState.Num_segments;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 0, "Segments: %4d/%4" PRIuFAST32, LevelSharedSegmentState.Num_segments, static_cast<uint_fast32_t>(MAX_SEGMENTS));
-	}
+	gr_uprintf(canvas, cv_font, 0, 0, "Segments: %4d/%4" PRIuFAST32, LevelSharedSegmentState.Num_segments, static_cast<uint_fast32_t>(MAX_SEGMENTS));
 
 	//---------------- Number of vertics -----------------
 	
-	if (old_Num_vertices != LevelSharedVertexState.Num_vertices)
-	{
-		old_Num_vertices = LevelSharedVertexState.Num_vertices;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 16, "Vertices: %4d/%4" PRIuFAST32, LevelSharedVertexState.Num_vertices, static_cast<uint_fast32_t>(MAX_VERTICES));
-	}
+	gr_uprintf(canvas, cv_font, 0, 16, "Vertices: %4d/%4" PRIuFAST32, LevelSharedVertexState.Num_vertices, static_cast<uint_fast32_t>(MAX_VERTICES));
 
 	//---------------- Number of objects -----------------
 	
-	if (old_Num_objects != LevelUniqueObjectState.num_objects)
 	{
 		const auto num_objects = LevelUniqueObjectState.num_objects;
-		old_Num_objects = num_objects;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 32, "Objs: %3d/%3" DXX_PRI_size_type, num_objects, MAX_OBJECTS.value);
+		gr_uprintf(canvas, cv_font, 0, 32, "Objs: %3d/%3" DXX_PRI_size_type, num_objects, MAX_OBJECTS.value);
 	}
 
   	//--------------- Current_segment_number -------------
 	//--------------- Current_side_number -------------
 
-	if (old_Cursegp_num != Cursegp || old_Curside != Curside)
 	{
-		old_Cursegp_num = Cursegp;
-		old_Curside = Curside;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 48, "Cursegp/side: %3hu/%1d", static_cast<segnum_t>(Cursegp), Curside);
+		gr_uprintf(canvas, cv_font, 0, 48, "Cursegp/side: %3hu/%1d", static_cast<segnum_t>(Cursegp), Curside);
 		unique_segment &useg = *Cursegp;
 		auto &uside = useg.sides[Curside];
-		gr_uprintf(canvas, *canvas.cv_font, 0, 128, " tmap1,2,o: %3d/%3dx%1u", get_texture_index(uside.tmap_num), get_texture_index(uside.tmap_num2), static_cast<unsigned>(get_texture_rotation_low(uside.tmap_num2)));
+		gr_uprintf(canvas, cv_font, 0, 128, " tmap1,2,o: %3d/%3dx%1u", get_texture_index(uside.tmap_num), get_texture_index(uside.tmap_num2), static_cast<unsigned>(get_texture_rotation_low(uside.tmap_num2)));
 	}
 
 	//--------------- Current_vertex_numbers -------------
 
-	if (old_Cursegp_num_for_verts != Cursegp)
 	{
-		old_Cursegp_num_for_verts = Cursegp;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 64, "{%3d,%3d,%3d,%3d,", Cursegp->verts[0],Cursegp->verts[1],
-																							 Cursegp->verts[2],Cursegp->verts[3] );
-		gr_uprintf(canvas, *canvas.cv_font, 0, 80," %3d,%3d,%3d,%3d}", Cursegp->verts[4],Cursegp->verts[5],
-																							 Cursegp->verts[6],Cursegp->verts[7] );
+		using U = std::underlying_type<vertnum_t>::type;
+		gr_uprintf(canvas, cv_font, 0, 64, "{%3u,%3u,%3u,%3u,", static_cast<U>(Cursegp->verts[0]), static_cast<U>(Cursegp->verts[1]), static_cast<U>(Cursegp->verts[2]), static_cast<U>(Cursegp->verts[3]));
+		gr_uprintf(canvas, cv_font, 0, 80, " %3u,%3u,%3u,%3u}", static_cast<U>(Cursegp->verts[4]), static_cast<U>(Cursegp->verts[5]), static_cast<U>(Cursegp->verts[6]), static_cast<U>(Cursegp->verts[7]));
 	}
 
 	//--------------- Num walls/links/triggers -------------------------
 
 	auto &Walls = LevelUniqueWallSubsystemState.Walls;
-	if ( old_Num_walls != Walls.get_count() ) {
-		old_Num_walls = Walls.get_count();
-		gr_uprintf(canvas, *canvas.cv_font, 0, 96, "Walls %3d", Walls.get_count());
-	}
+	gr_uprintf(canvas, cv_font, 0, 96, "Walls %3d", Walls.get_count());
 
 	//--------------- Num triggers ----------------------
 
-	{
 	auto &Triggers = LevelUniqueWallSubsystemState.Triggers;
-	if ( old_Num_triggers != Triggers.get_count() ) {
-		old_Num_triggers = Triggers.get_count();
-		gr_uprintf(canvas, *canvas.cv_font, 0, 112, "Num_triggers %2d", Triggers.get_count());
-	}
-	}
+	gr_uprintf(canvas, cv_font, 0, 112, "Num_triggers %2d", Triggers.get_count());
 
 	//--------------- Current texture number -------------
-
-	if ( old_CurrentTexture != CurrentTexture )	{
-		old_CurrentTexture = CurrentTexture;
-		gr_uprintf(canvas, *canvas.cv_font, 0, 144, "Tex/Light: %3d %5.2f", CurrentTexture, f2fl(TmapInfo[CurrentTexture].lighting));
-	}
+	gr_uprintf(canvas, cv_font, 0, 144, "Tex/Light: %3d %5.2f", CurrentTexture, f2fl(TmapInfo[CurrentTexture].lighting));
 }
 
 //	------------------------------------------------------------------------------------
 window_event_result info_dialog_window::event_handler(const d_event &event)
 {
 	static int old_padnum = -1;
-	int        padnum,show_all = 1;		// always redraw
+	int        padnum;		// always redraw
 	grs_canvas *save_canvas = grd_curcanv;
 
 	switch (event.type)
@@ -365,18 +302,17 @@ window_event_result info_dialog_window::event_handler(const d_event &event)
 			if (padnum != old_padnum) {
 				old_padnum = padnum;
 				clear_pad_display(canvas);
-				//show_all = 1;
 			}
 
 			switch (padnum) {
 				case OBJECT_PAD_ID:			// Object placement
-					info_display_object_placement(canvas, show_all);
+					info_display_object_placement(canvas, *canvas.cv_font);
 					break;
 				case SEGSIZE_PAD_ID:			// Segment sizing
-					info_display_segsize(canvas, show_all);
+					info_display_segsize(canvas, *canvas.cv_font);
 					break;
 				default:
-					info_display_default(canvas, show_all);
+					info_display_default(canvas, *canvas.cv_font);
 					break;
 			}
 			grd_curcanv = save_canvas;
@@ -397,10 +333,9 @@ window_event_result info_dialog_window::event_handler(const d_event &event)
 //	------------------------------------------------------------------------------------
 window *info_window_create(void)
 {
-	auto wind = std::make_unique<info_dialog_window>(*Canv_editor, PAD_X + 250, PAD_Y + 8, 180, 160);
+	auto wind = window_create<info_dialog_window>(*Canv_editor, PAD_X + 250, PAD_Y + 8, 180, 160);
 	wind->set_modal(0);
-	wind->send_creation_events();
-	return wind.release();
+	return wind;
 }
 
 }

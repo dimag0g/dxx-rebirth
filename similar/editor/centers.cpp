@@ -69,10 +69,7 @@ namespace {
 
 struct centers_dialog : UI_DIALOG
 {
-	explicit centers_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::unique_ptr<UI_GADGET_BUTTON> quitButton;
 	std::array<std::unique_ptr<UI_GADGET_RADIO>, MAX_CENTER_TYPES> centerFlag;
 	std::array<std::unique_ptr<UI_GADGET_CHECKBOX>, MAX_ROBOT_TYPES> robotMatFlag;
@@ -108,7 +105,7 @@ int do_centers_dialog()
 	const unsigned x = 20;
 	const unsigned width = 740;
 #endif
-	MainWindow = ui_create_dialog<centers_dialog>(x, TMAPBOX_Y + 20, width, 545 - TMAPBOX_Y, DF_DIALOG);
+	MainWindow = window_create<centers_dialog>(x, TMAPBOX_Y + 20, width, 545 - TMAPBOX_Y, DF_DIALOG);
 	return 1;
 }
 

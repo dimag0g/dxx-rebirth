@@ -65,10 +65,7 @@ namespace {
 
 struct trigger_dialog : UI_DIALOG
 {
-	explicit trigger_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::unique_ptr<UI_GADGET_USERBOX> wallViewBox;
 	std::unique_ptr<UI_GADGET_BUTTON> quitButton, remove_trigger, bind_wall, bind_matcen, enable_all_triggers;
 #if defined(DXX_BUILD_DESCENT_I)
@@ -337,7 +334,7 @@ int do_trigger_dialog()
 #endif
 
 	// Open a window with a quit button
-	MainWindow = ui_create_dialog<trigger_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
+	MainWindow = window_create<trigger_dialog>(TMAPBOX_X + 20, TMAPBOX_Y + 20, 765 - TMAPBOX_X, 545 - TMAPBOX_Y, DF_DIALOG);
 	return 1;
 }
 

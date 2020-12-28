@@ -33,7 +33,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "object.h"
 #include "multibot.h"
 #include "game.h"
-#include "multi.h"
+#include "net_udp.h"
 #include "laser.h"
 #include "dxxerror.h"
 #include "timer.h"
@@ -67,11 +67,6 @@ static int multi_add_controlled_robot(vmobjptridx_t objnum, int agitation);
 static void multi_send_robot_position_sub(const vmobjptridx_t objnum, int now);
 static void multi_send_release_robot(vmobjptridx_t objnum);
 static void multi_delete_controlled_robot(const vmobjptridx_t objnum);
-
-constexpr serial::endian_access::foreign_endian_type serial::endian_access::foreign_endian;
-constexpr serial::endian_access::little_endian_type serial::endian_access::little_endian;
-constexpr serial::endian_access::big_endian_type serial::endian_access::big_endian;
-constexpr serial::endian_access::native_endian_type serial::endian_access::native_endian;
 
 //
 // Code for controlling robots in multiplayer games
@@ -430,7 +425,7 @@ namespace dsx {
 /*
  * The thief bot moves around even when not controlled by a player. Due to its erratic and random behaviour, it's movement will diverge heavily between players and cause it to teleport when a player takes over.
  * To counter this, let host update positions when no one controls it OR the client which does.
- * Seperated this function to allow the positions being updated more frequently then multi_send_robot_frame (see net_udp_do_frame()).
+ * Seperated this function to allow the positions being updated more frequently then multi_send_robot_frame (see dispatch_table::do_protocol_frame()).
  */
 void multi_send_thief_frame()
 {
@@ -942,7 +937,7 @@ int multi_explode_robot_sub(const vmobjptridx_t robot)
 
 	// Data seems valid, explode the sucker
 
-	if (Network_send_objects && multi_objnum_is_past(robot))
+	if (Network_send_objects && multi::dispatch->objnum_is_past(robot))
 	{
 		Network_send_objnum = -1;
 	}

@@ -38,10 +38,10 @@ private:
 	class window *prev;				// the previous window in the doubly linked list
 	class window *next;				// the next window in the doubly linked list
 	bool *w_exists;					// optional pointer to a tracking variable
-	
 public:
 	explicit window(grs_canvas &src, int x, int y, int w, int h);
-
+	window(const window &) = delete;
+	window &operator=(const window &) = delete;
 	virtual ~window();
 
 	virtual window_event_result event_handler(const d_event &) = 0;
@@ -115,5 +115,13 @@ static inline window_event_result (WINDOW_SEND_EVENT)(window &w, const d_event &
 }
 
 void menu_destroy_hook(window *w);
+
+template <typename T1, typename... ConstructionArgs>
+T1 *window_create(ConstructionArgs &&... args)
+{
+	auto r = std::make_unique<T1>(std::forward<ConstructionArgs>(args)...);
+	r->send_creation_events();
+	return r.release();
+}
 
 }

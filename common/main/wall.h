@@ -25,7 +25,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #pragma once
 
-#ifdef __cplusplus
+#include "dsx-ns.h"
 #include "fwd-segment.h"
 #include "fwd-wall.h"
 #include "fwd-object.h"
@@ -34,40 +34,48 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 namespace dcx {
 
+enum class wall_key : uint8_t
+{
+	none = 1,
+	blue = 2,
+	red = 4,
+	gold = 8,
+};
+
+constexpr uint8_t operator&(const wall_key a, const wall_key b)
+{
+	return static_cast<uint8_t>(a) & static_cast<uint8_t>(b);
+}
+
 #if defined(DXX_BUILD_DESCENT_I) || defined(DXX_BUILD_DESCENT_II)
 struct WALL_IS_DOORWAY_mask_t
 {
-	unsigned value;
-	template <unsigned F>
-		constexpr WALL_IS_DOORWAY_mask_t(WALL_IS_DOORWAY_FLAG<F>) :
-			value(F)
+	uint8_t value;
+	constexpr WALL_IS_DOORWAY_mask_t(WALL_IS_DOORWAY_FLAG F) :
+		value(static_cast<uint8_t>(F))
 	{
 	}
 };
 
 struct WALL_IS_DOORWAY_result_t
 {
-	unsigned value;
-	template <unsigned F>
-		constexpr WALL_IS_DOORWAY_result_t(WALL_IS_DOORWAY_sresult_t<F>) :
-			value(F)
+	uint8_t value;
+	constexpr WALL_IS_DOORWAY_result_t(const WALL_IS_DOORWAY_sresult_t f) :
+		value(static_cast<unsigned>(f))
 	{
 	}
-	template <unsigned F>
-		unsigned operator&(WALL_IS_DOORWAY_FLAG<F>) const
-		{
-			return value & F;
-		}
-	template <unsigned F>
-		WALL_IS_DOORWAY_result_t operator|=(WALL_IS_DOORWAY_FLAG<F>)
-		{
-			value |= F;
-			return *this;
-		}
-	template <unsigned F>
-	bool operator==(WALL_IS_DOORWAY_sresult_t<F>) const
+	unsigned operator&(WALL_IS_DOORWAY_FLAG f) const
 	{
-		return value == F;
+		return value & static_cast<uint8_t>(f);
+	}
+	WALL_IS_DOORWAY_result_t &operator|=(WALL_IS_DOORWAY_FLAG f)
+	{
+		value |= static_cast<uint8_t>(f);
+		return *this;
+	}
+	bool operator==(WALL_IS_DOORWAY_sresult_t F) const
+	{
+		return value == static_cast<unsigned>(F);
 	}
 	bool operator&(WALL_IS_DOORWAY_mask_t m) const
 	{
@@ -110,7 +118,7 @@ struct v19_wall : public prohibit_void_ptr<v19_wall>
 	uint8_t   trigger;            // Which trigger is associated with the wall.
 	sbyte   clip_num;           // Which animation associated with the wall.
 	sbyte   keys;
-	int linked_wall;            // number of linked wall
+	wallnum_t linked_wall;            // number of linked wall
 };
 
 #ifdef dsx
@@ -156,7 +164,7 @@ struct wall : public prohibit_void_ptr<wall>
 	ubyte   state;              // Opening, closing, etc.
 	uint8_t   trigger;            // Which trigger is associated with the wall.
 	sbyte   clip_num;           // Which animation associated with the wall.
-	ubyte   keys;               // which keys are required
+	wall_key keys;               // which keys are required
 #if defined(DXX_BUILD_DESCENT_II)
 	sbyte   controlling_trigger;// which trigger causes something to happen here.  Not like "trigger" above, which is the trigger on this wall.
                                 //  Note: This gets stuffed at load time in gamemine.c.  Don't try to use it in the editor.  You will be sorry!
@@ -234,5 +242,4 @@ struct wclip : public prohibit_void_ptr<wclip>
 constexpr std::integral_constant<uint16_t, 0xffff> wclip_frames_none{};
 
 }
-#endif
 #endif

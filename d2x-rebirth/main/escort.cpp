@@ -78,6 +78,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 namespace dsx {
 
+namespace {
+
 static void show_escort_menu(const std::array<char, 300> &);
 static void say_escort_goal(escort_goal_t goal_num);
 
@@ -110,6 +112,63 @@ constexpr std::array<char[12], ESCORT_GOAL_MARKER9> Escort_goal_text = {{
 }};
 
 constexpr std::integral_constant<unsigned, 200> Max_escort_length{};
+
+#define DXX_GUIDEBOT_RENAME_MENU(VERB)	\
+	DXX_MENUITEM(VERB, INPUT, guidebot_name_buffer, opt_name)	\
+
+struct rename_guidebot_menu_items
+{
+	std::array<newmenu_item, DXX_GUIDEBOT_RENAME_MENU(COUNT)> m;
+	decltype(PlayerCfg.GuidebotName) guidebot_name_buffer;
+	enum
+	{
+		DXX_GUIDEBOT_RENAME_MENU(ENUM)
+	};
+	rename_guidebot_menu_items()
+	{
+		guidebot_name_buffer = PlayerCfg.GuidebotName;
+		DXX_GUIDEBOT_RENAME_MENU(ADD);
+	}
+};
+
+#undef DXX_GUIDEBOT_RENAME_MENU
+
+struct rename_guidebot_menu : rename_guidebot_menu_items, passive_newmenu
+{
+	rename_guidebot_menu(grs_canvas &src) :
+		passive_newmenu(menu_title{nullptr}, menu_subtitle{"Enter Guide-bot name:"}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 0), src)
+	{
+	}
+	virtual window_event_result event_handler(const d_event &event) override;
+};
+
+window_event_result rename_guidebot_menu::event_handler(const d_event &event)
+{
+	switch (event.type)
+	{
+		case EVENT_WINDOW_CLOSE:
+			{
+				uint8_t changed = 0;
+				if (PlayerCfg.GuidebotName != guidebot_name_buffer)
+				{
+					PlayerCfg.GuidebotName = guidebot_name_buffer;
+					changed = 1;
+				}
+				if (PlayerCfg.GuidebotNameReal != guidebot_name_buffer)
+				{
+					PlayerCfg.GuidebotNameReal = guidebot_name_buffer;
+					changed = 1;
+				}
+				if (changed)
+					write_player_file();
+			}
+			return window_event_result::ignored;
+		default:
+			return newmenu::event_handler(event);
+	}
+}
+
+}
 
 void init_buddy_for_level(void)
 {
@@ -351,27 +410,11 @@ void detect_escort_goal_accomplished(const vmobjptridx_t index)
 	}
 }
 
-#define DXX_GUIDEBOT_RENAME_MENU(VERB)	\
-	DXX_MENUITEM(VERB, INPUT, text, opt_name)	\
-
 void change_guidebot_name()
 {
-	auto text = PlayerCfg.GuidebotName;
-	std::array<newmenu_item, DXX_GUIDEBOT_RENAME_MENU(COUNT)> m;
-	enum
-	{
-		DXX_GUIDEBOT_RENAME_MENU(ENUM)
-	};
-	DXX_GUIDEBOT_RENAME_MENU(ADD);
-	const auto item = newmenu_do(nullptr, "Enter Guide-bot name:", m, unused_newmenu_subfunction, unused_newmenu_userdata);
-
-	if (item != -1) {
-		PlayerCfg.GuidebotName = PlayerCfg.GuidebotNameReal = text;
-		write_player_file();
-	}
+	auto menu = window_create<rename_guidebot_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
-
-#undef DXX_GUIDEBOT_RENAME_MENU
 
 //	-----------------------------------------------------------------------------
 static uint8_t show_buddy_message()
@@ -552,6 +595,8 @@ void set_escort_special_goal(d_unique_buddy_state &BuddyState, const int raw_spe
 	BuddyState.Escort_goal_object = ESCORT_GOAL_UNSPECIFIED;
 	multi_send_escort_goal(BuddyState);
 }
+
+namespace {
 
 //	-----------------------------------------------------------------------------
 //	Return id of boss.
@@ -792,7 +837,7 @@ static void escort_go_to_goal(const vmobjptridx_t objp, ai_static *const aip, co
 			return;
 		buddy_message_ignore_time("Cannot reach %s.", goal_text_index < Escort_goal_text.size() ? Escort_goal_text[goal_text_index] : "<unknown>");
 		const auto goal_segment = plrobj.segnum;
-		const fix dist_to_player = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), plrobj.pos, vmsegptridx(goal_segment), 100, WID_FLY_FLAG);
+		const fix dist_to_player = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), plrobj.pos, vmsegptridx(goal_segment), 100, WALL_IS_DOORWAY_FLAG::fly);
 		if (dist_to_player > MIN_ESCORT_DISTANCE)
 			create_path_to_segment(objp, Max_escort_length, create_path_safety_flag::safe, goal_segment);
 		else {
@@ -1150,6 +1195,8 @@ static void escort_set_goal_toward_controlling_player(d_unique_buddy_state &Budd
 	aip.ail.mode = ai_mode::AIM_GOTO_OBJECT;
 }
 
+}
+
 //	-----------------------------------------------------------------------------
 //	Called every frame (or something).
 void do_escort_frame(const vmobjptridx_t objp, const object &plrobj, const player_visibility_state player_visibility)
@@ -1296,7 +1343,7 @@ void do_snipe_frame(const vmobjptridx_t objp, const fix dist_to_player, const pl
 
 			ailp->next_action_time = SNIPE_WAIT_TIME;
 
-			connected_distance = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), Believed_player_pos, vmsegptridx(Believed_player_seg), 30, WID_FLY_FLAG);
+			connected_distance = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), Believed_player_pos, vmsegptridx(Believed_player_seg), 30, WALL_IS_DOORWAY_FLAG::fly);
 			if (connected_distance < F1_0*500) {
 				create_path_to_believed_player_segment(objp, 30, create_path_safety_flag::safe);
 				ailp->mode = ai_mode::AIM_SNIPE_ATTACK;
@@ -1449,7 +1496,7 @@ void do_thief_frame(const vmobjptridx_t objp, const fix dist_to_player, const pl
 
 			ailp->next_action_time = Thief_wait_times[Difficulty_level]/2;
 
-			connected_distance = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), Believed_player_pos, vmsegptridx(Believed_player_seg), 30, WID_FLY_FLAG);
+			connected_distance = find_connected_distance(objp->pos, vmsegptridx(objp->segnum), Believed_player_pos, vmsegptridx(Believed_player_seg), 30, WALL_IS_DOORWAY_FLAG::fly);
 			if (connected_distance < F1_0*500) {
 				create_path_to_believed_player_segment(objp, 30, create_path_safety_flag::safe);
 				ailp->mode = ai_mode::AIM_THIEF_ATTACK;
@@ -1961,7 +2008,7 @@ void do_escort_menu(void)
 	}
 
 	// Just make it the full screen size and let show_escort_menu figure it out
-	auto wind = std::make_unique<escort_menu>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
+	auto wind = window_create<escort_menu>(grd_curscreen->sc_canvas, 0, 0, SWIDTH, SHEIGHT);
 
 	auto &plrobj = get_local_plrobj();
 	//	This prevents the buddy from coming back if you've told him to scram.
@@ -2034,9 +2081,9 @@ void do_escort_menu(void)
 						"T.  %s Messages"
 						// -- "9.	Find the exit" CC_LSPACING_S "3\n"
 				, goal_txt, tstr);
-	wind->send_creation_events();
-	wind.release();
 }
+
+namespace {
 
 //	-------------------------------------------------------------------------------
 //	Show the Buddy menu!
@@ -2063,6 +2110,8 @@ void show_escort_menu(const std::array<char, 300> &amsg)
 	gr_ustring(canvas, game_font, x, y, msg);
 
 	reset_cockpit();
+}
+
 }
 
 }

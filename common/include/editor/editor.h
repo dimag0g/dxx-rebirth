@@ -198,13 +198,7 @@ extern void init_all_vertices(void);
 }
 #endif
 
-//	Returns true if vertex vi is contained in exactly one segment, else returns false.
-extern int is_free_vertex(int vi);
-
-//	Set existing vertex vnum to value *vp.
-int med_set_vertex(unsigned vnum, const vertex &vp);
-
-void med_combine_duplicate_vertices(std::array<uint8_t, MAX_VERTICES> &);
+void med_combine_duplicate_vertices(enumerated_array<uint8_t, MAX_VERTICES, vertnum_t> &);
 
 #ifdef dsx
 namespace dsx {
@@ -342,12 +336,8 @@ void med_extract_matrix_from_segment(const shared_segment &sp, vms_matrix &rotma
 void assign_default_uvs_to_segment(vmsegptridx_t segp);
 void assign_default_uvs_to_side(vmsegptridx_t segp, unsigned side);
 
-//	Assign u,v coordinates to con_seg, con_common_side from base_seg, base_common_side
-//	They are connected at the edge defined by the vertices abs_id1, abs_id2.
-void med_assign_uvs_to_side(vmsegptridx_t con_seg, unsigned con_common_side, cscusegment base_seg, unsigned base_common_side, unsigned abs_id1, unsigned abs_id2);
-
 //	Create coordinate axes in orientation of specified segment, stores vertices at *vp.
-void create_coordinate_axes_from_segment(const shared_segment &sp, std::array<unsigned, 16> &vertnums);
+void create_coordinate_axes_from_segment(const shared_segment &sp, std::array<vertnum_t, 16> &vertnums);
 
 //	Set Vertex_active to number of occurrences of each vertex.
 //	Set Num_vertices.
@@ -408,11 +398,11 @@ void warn_if_concave_segment(vmsegptridx_t s);
 }
 
 //	Add a vertex to the vertex list.
-int med_add_vertex(const vertex &vp);
+vertnum_t med_add_vertex(const vertex &vp);
 
 //	Add a vertex to the vertex list which may be identical to another vertex (in terms of coordinates).
 //	Don't scan list, looking for presence of a vertex with same coords, add this one.
-int med_create_duplicate_vertex(const vertex &vp);
+vertnum_t med_create_duplicate_vertex(const vertex &vp);
 
 namespace dsx {
 //	Create a new segment, duplicating exactly, including vertex ids and children, the passed segment.
@@ -477,6 +467,11 @@ extern	int	Degenerate_segment_found;
 
 namespace dcx {
 
+#ifdef dsx
+//	Returns true if vertex vi is contained in exactly one segment, else returns false.
+int is_free_vertex(const fvcsegptr &vcsegptr, vertnum_t vi);
+#endif
+
 // Initializes autosave system.
 // Sets global Autosave_count to 0.
 extern void init_autosave(void);
@@ -526,10 +521,7 @@ extern grs_canvas *const Canv_editor_game; //the game on the editor screen
 
 struct editor_dialog : UI_DIALOG
 {
-	explicit editor_dialog(short x, short y, short w, short h, enum dialog_flags flags) :
-		UI_DIALOG(x, y, w, h, flags, nullptr, nullptr)
-	{
-	}
+	using UI_DIALOG::UI_DIALOG;
 	std::array<std::unique_ptr<UI_GADGET_BUTTON>, 9> pad_goto;
 	std::unique_ptr<UI_GADGET_BUTTON>
 		pad_prev,

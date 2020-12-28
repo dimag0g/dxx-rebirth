@@ -219,7 +219,7 @@ static void check_weapon_reorder(std::array<ubyte, N> &w)
 }
 
 namespace dsx {
-int new_player_config()
+void new_player_config()
 {
 #if defined(DXX_BUILD_DESCENT_I)
 	range_for (auto &i, saved_games)
@@ -293,8 +293,6 @@ int new_player_config()
 	PlayerCfg.NetworkMessageMacro[3] = "This one's headed for Uranus";
 #endif
 	PlayerCfg.NetlifeKills=0; PlayerCfg.NetlifeKilled=0;
-	
-	return 1;
 }
 }
 
@@ -881,13 +879,13 @@ int read_player_file()
 #endif
 
 	if (id!=SAVE_FILE_ID) {
-		nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), "Invalid player file");
+		nm_messagebox_str(menu_title{TXT_ERROR}, nm_messagebox_tie(TXT_OK), menu_subtitle{"Invalid player file"});
 		return -1;
 	}
 
 #if defined(DXX_BUILD_DESCENT_I)
 	if (saved_game_version < COMPATIBLE_SAVED_GAME_VERSION || player_struct_version < COMPATIBLE_PLAYER_STRUCT_VERSION) {
-		nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), TXT_ERROR_PLR_VERSION);
+		nm_messagebox_str(menu_title{TXT_ERROR}, nm_messagebox_tie(TXT_OK), menu_subtitle{TXT_ERROR_PLR_VERSION});
 		return -1;
 	}
 
@@ -931,7 +929,7 @@ int read_player_file()
 	}
 
 	if (shareware_file == -1) {
-		nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), "Error invalid or unknown\nplayerfile-size");
+		nm_messagebox_str(menu_title{TXT_ERROR}, nm_messagebox_tie(TXT_OK), menu_subtitle{"Error invalid or unknown\nplayerfile-size"});
 		return -1;
 	}
 
@@ -968,7 +966,7 @@ int read_player_file()
 		player_file_version = SWAPSHORT(player_file_version);
 
 	if (player_file_version < COMPATIBLE_PLAYER_FILE_VERSION) {
-		nm_messagebox_str(TXT_ERROR, nm_messagebox_tie(TXT_OK), TXT_ERROR_PLR_VERSION);
+		nm_messagebox_str(menu_title{TXT_ERROR}, nm_messagebox_tie(TXT_OK), menu_subtitle{TXT_ERROR_PLR_VERSION});
 		return -1;
 	}
 
@@ -1122,7 +1120,7 @@ int read_player_file()
 		if (i!=get_lifetime_checksum (PlayerCfg.NetlifeKills,PlayerCfg.NetlifeKilled))
 		{
 			PlayerCfg.NetlifeKills=0; PlayerCfg.NetlifeKilled=0;
-			nm_messagebox_str(nullptr, nm_messagebox_tie("Shame on me"), "Trying to cheat eh?");
+			nm_messagebox_str(menu_title{nullptr}, nm_messagebox_tie("Shame on me"), menu_subtitle{"Trying to cheat eh?"});
 			rewrite_it=1;
 		}
 	}
@@ -1155,7 +1153,7 @@ int read_player_file()
 	return EZERO;
 
  read_player_file_failed:
-	nm_messagebox(TXT_ERROR, 1, TXT_OK, "%s\n\n%s", "Error reading PLR file", PHYSFS_getLastError());
+	nm_messagebox(menu_title{TXT_ERROR}, 1, TXT_OK, "%s\n\n%s", "Error reading PLR file", PHYSFS_getLastError());
 	return -1;
 }
 }
@@ -1404,7 +1402,7 @@ void write_player_file()
 
 	if (errno_ret != EZERO) {
 		PHYSFS_delete(filename);			//delete bogus file
-		nm_messagebox(TXT_ERROR, 1, TXT_OK, "%s\n\n%s",TXT_ERROR_WRITING_PLR, strerror(errno_ret));
+		nm_messagebox(menu_title{TXT_ERROR}, 1, TXT_OK, "%s\n\n%s",TXT_ERROR_WRITING_PLR, strerror(errno_ret));
 	}
 #elif defined(DXX_BUILD_DESCENT_II)
 	(void)errno_ret;
@@ -1492,7 +1490,7 @@ void write_player_file()
 	return;
 
  write_player_file_failed:
-	nm_messagebox(TXT_ERROR, 1, TXT_OK, "%s\n\n%s", TXT_ERROR_WRITING_PLR, PHYSFS_getLastError());
+	nm_messagebox(menu_title{TXT_ERROR}, 1, TXT_OK, "%s\n\n%s", TXT_ERROR_WRITING_PLR, PHYSFS_getLastError());
 	if (file)
 	{
 		file.reset();
