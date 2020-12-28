@@ -1861,12 +1861,14 @@ static void reticle_config()
 }
 
 
-enum {
-	optgrp_viewstyle,
-	optgrp_hudstyle,
-};
 
-#define DXX_COCKPIT_MODE_MENU(VERB)	\
+
+
+
+
+struct hud_style_config_menu_items
+{
+#define DXX_HUD_STYLE_MENU(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "View style:", opt_viewstyle_label)	\
 	DXX_MENUITEM(VERB, RADIO, "Cockpit", opt_viewstyle_cockpit, PlayerCfg.CockpitMode[1] == CM_FULL_COCKPIT, optgrp_viewstyle)	\
 	DXX_MENUITEM(VERB, RADIO, "Status bar", opt_viewstyle_bar, PlayerCfg.CockpitMode[1] == CM_STATUS_BAR, optgrp_viewstyle)	\
@@ -1877,36 +1879,62 @@ enum {
 	DXX_MENUITEM(VERB, RADIO, "Alternate #2", opt_hudstyle_alt2, PlayerCfg.HudMode == HudType::Alternate2, optgrp_hudstyle)	\
 	DXX_MENUITEM(VERB, RADIO, "Hidden", opt_hudstyle_hidden, PlayerCfg.HudMode == HudType::Hidden, optgrp_hudstyle)	\
 
-enum {
-	DXX_COCKPIT_MODE_MENU(ENUM)
+		enum {
+			optgrp_viewstyle,
+			optgrp_hudstyle,
+		};
+		enum {
+			DXX_HUD_STYLE_MENU(ENUM)
+		};
+		std::array<newmenu_item, DXX_HUD_STYLE_MENU(COUNT)> m;
+		hud_style_config_menu_items()
+		{
+			DXX_HUD_STYLE_MENU(ADD);
+		}
+	};
+
+struct hud_style_config_menu : hud_style_config_menu_items, newmenu
+{
+	hud_style_config_menu(grs_canvas &src) :
+		newmenu(menu_title{nullptr}, menu_subtitle{"View / HUD Style..."}, menu_filename{nullptr}, tiny_mode_flag::normal, tab_processing_flag::ignore, adjusted_citem::create(m, 1), src)
+	{
+	}
+	virtual int subfunction_handler(const d_event &event) override;
 };
 
-void hud_style_config(void);
-void hud_style_config()
+int hud_style_config_menu::subfunction_handler(const d_event &event)
 {
-	for (;;)
+	switch (event.type)
 	{
-		std::array<newmenu_item, DXX_COCKPIT_MODE_MENU(COUNT)> m;
-		DXX_COCKPIT_MODE_MENU(ADD);
-		const auto i = newmenu_do1(nullptr, "View / HUD Style", m, unused_newmenu_subfunction, unused_newmenu_userdata, 0);
-		DXX_COCKPIT_MODE_MENU(READ);
-		enum cockpit_mode_t new_mode = m[opt_viewstyle_cockpit].value
-			? CM_FULL_COCKPIT
-			: m[opt_viewstyle_bar].value
-				? CM_STATUS_BAR
-				: CM_FULL_SCREEN;
-		select_cockpit(new_mode);
-		PlayerCfg.CockpitMode[0] = new_mode;
-		PlayerCfg.HudMode = m[opt_hudstyle_standard].value
-			? HudType::Standard
-			: m[opt_hudstyle_alt1].value
-				? HudType::Alternate1
-				: m[opt_hudstyle_alt2].value
-					? HudType::Alternate2
-					: HudType::Hidden;
-		if (i == -1)
+		case EVENT_WINDOW_CLOSE:
+		{
+			enum cockpit_mode_t new_mode = m[opt_viewstyle_cockpit].value
+				? CM_FULL_COCKPIT
+				: m[opt_viewstyle_bar].value
+					? CM_STATUS_BAR
+					: CM_FULL_SCREEN;
+			select_cockpit(new_mode);
+			PlayerCfg.CockpitMode[0] = new_mode;
+			PlayerCfg.HudMode = m[opt_hudstyle_standard].value
+				? HudType::Standard
+				: m[opt_hudstyle_alt1].value
+					? HudType::Alternate1
+					: m[opt_hudstyle_alt2].value
+						? HudType::Alternate2
+						: HudType::Hidden;
+			break;
+		}
+		default:
 			break;
 	}
+	return 0;
+}
+#undef DXX_HUD_STYLE_MENU
+
+static void hud_style_config()
+{
+	auto menu = window_create<hud_style_config_menu>(grd_curscreen->sc_canvas);
+	(void)menu;
 }
 
 #if defined(DXX_BUILD_DESCENT_I)
