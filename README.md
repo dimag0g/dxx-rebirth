@@ -61,9 +61,6 @@ Game controls can be changed in the game options. Default configuration mimics t
 - D-pad down - Convert energy to shield (D2 only)
 - D-pad left/right - Cycle primary/secondary weapon
 
-There are 3 pre-configured profiles (cockpit/hudbar/maxview) corresponing to the 3 HUD modes.
-Currently hotkey-triggered HUD options can only be changed using a keyboard on a PC version, or by manually editing the config files.
-
 [4] TODO
 --------
 
