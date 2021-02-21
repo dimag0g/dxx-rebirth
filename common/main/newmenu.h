@@ -119,7 +119,6 @@ class newmenu_item
 			return v;
 		}
 public:
-	int     value;          // For checkboxes and radio buttons, this is 1 if marked initially, else 0
 	input_specific_type &input() {
 		return get_union_member(nm_private_input);
 	}
@@ -150,16 +149,17 @@ public:
 			: nullptr;
 	}
 	char    *text;          // The text associated with this item.
+	int     value;          // For checkboxes and radio buttons, this is 1 if marked initially, else 0
 	// The rest of these are used internally by by the menu system, so don't set 'em!!
 	short   x, y;
 	short   w, h;
-	short   right_offset;
+	uint8_t right_offset;
 	nm_type type;           // What kind of item this is, see NM_TYPE_????? defines
 	union {
 		input_specific_type nm_private_input;
 		radio_specific_type nm_private_radio;
 		number_specific_type nm_private_number;
-		imenu_specific_type nm_private_imenu;
+		imenu_specific_type nm_private_imenu = {};
 		slider_specific_type nm_private_slider;
 	};
 };

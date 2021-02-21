@@ -27,7 +27,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <string.h>
 
 #include "gr.h"
-#include "grdef.h"
 #include "u_mem.h"
 #include "pcx.h"
 #include "physfsx.h"
@@ -265,7 +264,7 @@ pcx_result pcx_read_bitmap_or_default(const char *const filename, grs_main_bitma
 }
 
 #if !DXX_USE_OGL && DXX_USE_SCREENSHOT_FORMAT_LEGACY
-pcx_result pcx_write_bitmap(PHYSFS_File *const PCXfile, const grs_bitmap *const bmp, palette_array_t &palette)
+unsigned pcx_write_bitmap(PHYSFS_File *const PCXfile, const grs_bitmap *const bmp, palette_array_t &palette)
 {
 	int retval;
 	ubyte data;
@@ -282,7 +281,7 @@ pcx_result pcx_write_bitmap(PHYSFS_File *const PCXfile, const grs_bitmap *const 
 
 	if (PHYSFS_write(PCXfile, &header, PCXHEADER_SIZE, 1) != 1)
 	{
-		return pcx_result::ERROR_WRITING;
+		return 1;
 	}
 
 	{
@@ -294,7 +293,7 @@ pcx_result pcx_write_bitmap(PHYSFS_File *const PCXfile, const grs_bitmap *const 
 		{
 			if (!pcx_encode_line(i, bm_w, PCXfile))
 			{
-			return pcx_result::ERROR_WRITING;
+				return 1;
 			}
 		}
 	}
@@ -303,15 +302,17 @@ pcx_result pcx_write_bitmap(PHYSFS_File *const PCXfile, const grs_bitmap *const 
 	data = 12;
 	if (PHYSFS_write(PCXfile, &data, 1, 1) != 1)
 	{
-		return pcx_result::ERROR_WRITING;
+		return 1;
 	}
 
 	retval = PHYSFS_write(PCXfile, &palette[0], sizeof(palette), 1);
 	if (retval !=1)	{
-		return pcx_result::ERROR_WRITING;
+		return 1;
 	}
-	return pcx_result::SUCCESS;
+	return 0;
 }
+
+namespace {
 
 // returns number of bytes written into outBuff, 0 if failed
 int pcx_encode_line(const uint8_t *inBuff, uint_fast32_t inLen, PHYSFS_File *fp)
@@ -379,6 +380,8 @@ int pcx_encode_byte(ubyte byt, ubyte cnt, PHYSFS_File *fid)
 		}
 	}
 	return 0;
+}
+
 }
 #endif
 

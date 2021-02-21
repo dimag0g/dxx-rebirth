@@ -38,11 +38,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "key.h"
 #include "object.h"
 #include "menu.h"
-#include "physics.h"
 #include "dxxerror.h"
 #include "joy.h"
-#include "iff.h"
-#include "pcx.h"
 #include "timer.h"
 #include "render.h"
 #include "laser.h"
@@ -52,7 +49,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gauges.h"
 #include "texmap.h"
 #include "3d.h"
-#include "effects.h"
 #include "gameseg.h"
 #include "wall.h"
 #include "ai.h"
@@ -78,19 +74,15 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "config.h"
 #include "hudmsg.h"
 #include "kconfig.h"
-#include "mouse.h"
 #include "titles.h"
 #include "gr.h"
 #include "playsave.h"
-#include "scores.h"
 
 #include "multi.h"
 #include "cntrlcen.h"
 #include "fuelcen.h"
-#include "pcx.h"
 #include "state.h"
 #include "piggy.h"
-#include "multibot.h"
 #include "ai.h"
 #include "rbaudio.h"
 #include "switch.h"
@@ -249,25 +241,46 @@ static void update_vcr_state(void)
 
 namespace dsx {
 #if defined(DXX_BUILD_DESCENT_II)
+
+namespace {
+
 //returns which bomb will be dropped next time the bomb key is pressed
-int which_bomb()
+template <typename T>
+secondary_weapon_index_t read_update_which_proximity_mine_to_use(T &player_info)
 {
-	auto &Objects = LevelUniqueObjectState.Objects;
-	auto &vmobjptr = Objects.vmptr;
 	//use the last one selected, unless there aren't any, in which case use
 	//the other if there are any
-	auto &player_info = get_local_plrobj().ctype.player_info;
 	auto &Secondary_last_was_super = player_info.Secondary_last_was_super;
 	const auto mask = 1 << PROXIMITY_INDEX;
 	const auto bomb = (Secondary_last_was_super & mask) ? SMART_MINE_INDEX : PROXIMITY_INDEX;
-
 	auto &secondary_ammo = player_info.secondary_ammo;
-	if (secondary_ammo[bomb] == 0 &&
-		secondary_ammo[SMART_MINE_INDEX + PROXIMITY_INDEX - bomb] != 0)
+	if (secondary_ammo[bomb])
+		/* Player has the requested bomb type available.  Use it. */
+		return bomb;
+	const auto alt_bomb = static_cast<secondary_weapon_index_t>(SMART_MINE_INDEX + PROXIMITY_INDEX - bomb);
+	if (secondary_ammo[alt_bomb])
 	{
-		Secondary_last_was_super ^= mask;
+		/* Player has the alternate bomb type, but not the requested
+		 * bomb type.  Switch.
+		 */
+		if constexpr (!std::is_const<T>::value)
+			Secondary_last_was_super ^= mask;
+		return alt_bomb;
 	}
+	/* Player has no bombs of either type. */
 	return bomb;
+}
+
+}
+
+secondary_weapon_index_t which_bomb(const player_info &player_info)
+{
+	return read_update_which_proximity_mine_to_use(player_info);
+}
+
+secondary_weapon_index_t which_bomb(player_info &player_info)
+{
+	return read_update_which_proximity_mine_to_use(player_info);
 }
 #endif
 
@@ -313,7 +326,7 @@ static void do_weapon_n_item_stuff(object_array &Objects, control_info &Controls
 		if (select_weapon > 4)
 			do_secondary_weapon_select(player_info, static_cast<secondary_weapon_index_t>(select_weapon - 5));
 		else
-			do_primary_weapon_select(player_info, weapon_num);
+			do_primary_weapon_select(player_info, static_cast<primary_weapon_index_t>(weapon_num));
 	}
 #if defined(DXX_BUILD_DESCENT_II)
 	if (auto &headlight = Controls.state.headlight)
@@ -639,30 +652,30 @@ static int select_next_window_function(const gauge_inset_window_view w)
 
 	auto &Robot_info = LevelSharedRobotInfoState.Robot_info;
 	switch (PlayerCfg.Cockpit3DView[w]) {
-		case CV_NONE:
-			PlayerCfg.Cockpit3DView[w] = CV_REAR;
+		case cockpit_3d_view::None:
+			PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::Rear;
 			break;
-		case CV_REAR:
+		case cockpit_3d_view::Rear:
 			if (find_escort(vmobjptridx, Robot_info) != object_none)
 			{
-				PlayerCfg.Cockpit3DView[w] = CV_ESCORT;
+				PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::Escort;
 				break;
 			}
 			//if no ecort, fall through
 			DXX_BOOST_FALLTHROUGH;
-		case CV_ESCORT:
+		case cockpit_3d_view::Escort:
 			Coop_view_player[w] = UINT_MAX;		//force first player
 			DXX_BOOST_FALLTHROUGH;
-		case CV_COOP:
+		case cockpit_3d_view::Coop:
 			Marker_viewer_num[w] = game_marker_index::None;
 			if ((Game_mode & GM_MULTI_COOP) || (Game_mode & GM_TEAM)) {
-				PlayerCfg.Cockpit3DView[w] = CV_COOP;
+				PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::Coop;
 				for (;;)
 				{
 					const auto cvp = ++ Coop_view_player[w];
 					if (cvp == MAX_PLAYERS - 1)
 					{
-						PlayerCfg.Cockpit3DView[w] = CV_MARKER;
+						PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::Marker;
 						goto case_marker;
 					}
 					if (cvp == Player_num)
@@ -679,10 +692,10 @@ static int select_next_window_function(const gauge_inset_window_view w)
 			}
 			//if not multi,
 			DXX_BOOST_FALLTHROUGH;
-		case CV_MARKER:
+		case cockpit_3d_view::Marker:
 		case_marker:;
 			if ((Game_mode & GM_MULTI) && !(Game_mode & GM_MULTI_COOP) && Netgame.Allow_marker_view) {	//anarchy only
-				PlayerCfg.Cockpit3DView[w] = CV_MARKER;
+				PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::Marker;
 				auto &mvn = Marker_viewer_num[w];
 				const auto gmi0 = convert_player_marker_index_to_game_marker_index(Game_mode, Netgame.max_numplayers, Player_num, player_marker_index::_0);
 				if (!MarkerState.imobjidx.valid_index(mvn))
@@ -691,11 +704,11 @@ static int select_next_window_function(const gauge_inset_window_view w)
 				{
 					++ mvn;
 					if (!MarkerState.imobjidx.valid_index(mvn))
-						PlayerCfg.Cockpit3DView[w] = CV_NONE;
+						PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::None;
 				}
 			}
 			else
-				PlayerCfg.Cockpit3DView[w] = CV_NONE;
+				PlayerCfg.Cockpit3DView[w] = cockpit_3d_view::None;
 			break;
 	}
 	write_player_file();
@@ -1608,7 +1621,7 @@ static window_event_result FinalCheats()
 
 		player_info.vulcan_ammo = VULCAN_AMMO_MAX;
 		auto &secondary_ammo = player_info.secondary_ammo;
-		range_for (const unsigned i, xrange(3u))
+		for (const auto i : {secondary_weapon_index_t::CONCUSSION_INDEX, secondary_weapon_index_t::HOMING_INDEX, secondary_weapon_index_t::PROXIMITY_INDEX})
 			secondary_ammo[i] = Secondary_ammo_max[i];
 
 		if (Newdemo_state == ND_STATE_RECORDING)

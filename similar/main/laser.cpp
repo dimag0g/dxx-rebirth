@@ -32,17 +32,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "bm.h"
 #include "object.h"
 #include "laser.h"
-#include "args.h"
 #include "segment.h"
 #include "fvi.h"
-#include "segpoint.h"
 #include "dxxerror.h"
-#include "key.h"
-#include "texmap.h"
 #include "gameseg.h"
 #include "textures.h"
-#include "render.h"
-#include "vclip.h"
 #include "fireball.h"
 #include "polyobj.h"
 #include "robot.h"
@@ -2315,8 +2309,8 @@ void do_missile_firing(int drop_bomb)
 	fix fire_frame_overhead = 0;
 
 	auto &plrobj = get_local_plrobj();
-	const auto bomb = which_bomb();
 	auto &player_info = plrobj.ctype.player_info;
+	const auto bomb = which_bomb(player_info);
 	const auto weapon = drop_bomb ? bomb : player_info.Secondary_weapon;
 	assert(weapon < MAX_SECONDARY_WEAPONS);
 	auto &Next_missile_fire_time = player_info.Next_missile_fire_time;

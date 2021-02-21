@@ -51,7 +51,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "laser.h"
 #include "dxxerror.h"
 #include "ai.h"
-#include "hostage.h"
 #include "morph.h"
 #include "cntrlcen.h"
 #include "powerup.h"
@@ -64,11 +63,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "newdemo.h"
 #include "player.h"
 #include "weapon.h"
-#include "newmenu.h"
 #include "gauges.h"
 #include "multi.h"
-#include "menu.h"
-#include "args.h"
 #include "text.h"
 #include "piggy.h"
 #include "switch.h"
@@ -1262,7 +1258,7 @@ void obj_delete(d_level_unique_object_state &LevelUniqueObjectState, segment_arr
 			if (pnum == Player_num)
 			{
 				if (!PlayerCfg.GuidedInBigWindow)
-					do_cockpit_window_view(gauge_inset_window_view::secondary, WBU_STATIC);
+					do_cockpit_window_view(gauge_inset_window_view::secondary, weapon_box_user::post_missile_static);
 				if (Newdemo_state == ND_STATE_RECORDING)
 					newdemo_record_guided_end();
 			}

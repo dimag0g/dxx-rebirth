@@ -34,7 +34,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "3d.h"
 
 #include "object.h"
-#include "render.h"
 #include "dxxerror.h"
 #include "ai.h"
 #include "escort.h"
@@ -53,17 +52,13 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "fireball.h"
 #include "morph.h"
 #include "effects.h"
-#include "timer.h"
 #include "sounds.h"
 #include "gameseg.h"
 #include "cntrlcen.h"
 #include "multibot.h"
 #include "multi.h"
 #include "gameseq.h"
-#include "key.h"
 #include "powerup.h"
-#include "gauges.h"
-#include "text.h"
 #include "args.h"
 #include "fuelcen.h"
 #include "controls.h"
@@ -72,7 +67,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #if DXX_USE_EDITOR
 #include "editor/editor.h"
 #include "editor/esegment.h"
-#include "editor/kdefs.h"
 #endif
 
 //added 05/17/99 Matt Mueller
@@ -83,7 +77,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "segiter.h"
 #include "d_enumerate.h"
 #include "d_levelstate.h"
-#include "d_range.h"
 #include <utility>
 
 using std::min;
@@ -230,7 +223,7 @@ struct robot_to_player_visibility_state
 	uint8_t initialized = 0;
 };
 
-struct awareness_t : std::array<player_awareness_type_t, MAX_SEGMENTS>
+struct awareness_t : enumerated_array<player_awareness_type_t, MAX_SEGMENTS, segnum_t>
 {
 };
 
@@ -2131,6 +2124,23 @@ static const shared_segment *boss_intersects_wall(fvcvertptr &vcvertptr, const o
 		auto &vertex_pos = *vcvertptr(segp->verts[posnum ++]);
 		vm_vec_avg(pos, vertex_pos, segcenter);
 	}
+}
+
+// ----------------------------------------------------------------------------------
+static void pae_aux(const vcsegptridx_t segnum, const player_awareness_type_t type, awareness_t &New_awareness, const unsigned allowed_recursions_remaining)
+{
+	if (New_awareness[segnum] < type)
+		New_awareness[segnum] = type;
+	const auto sub_allowed_recursions_remaining = allowed_recursions_remaining - 1;
+	if (!sub_allowed_recursions_remaining)
+		return;
+	// Process children.
+	const auto subtype = (type == player_awareness_type_t::PA_WEAPON_ROBOT_COLLISION)
+		? player_awareness_type_t::PA_PLAYER_COLLISION
+		: type;
+	for (const auto j : segnum->shared_segment::children)
+		if (IS_CHILD(j))
+			pae_aux(segnum.absolute_sibling(j), subtype, New_awareness, sub_allowed_recursions_remaining);
 }
 
 }
@@ -4480,39 +4490,25 @@ void create_awareness_event(object &objp, player_awareness_type_t type, d_level_
 namespace {
 
 // ----------------------------------------------------------------------------------
-static void pae_aux(const vcsegptridx_t segnum, const player_awareness_type_t type, const int level, awareness_t &New_awareness)
+static unsigned process_awareness_events(fvcsegptridx &vcsegptridx, d_level_unique_robot_awareness_state &LevelUniqueRobotAwarenessState, awareness_t &New_awareness)
 {
-	if (New_awareness[segnum] < type)
-		New_awareness[segnum] = type;
-
-	// Process children.
-#if defined(DXX_BUILD_DESCENT_I)
-	if (level <= 4)
-#elif defined(DXX_BUILD_DESCENT_II)
-	if (level <= 3)
-#endif
-	{
-		const auto subtype = (type == player_awareness_type_t::PA_WEAPON_ROBOT_COLLISION)
-			? player_awareness_type_t::PA_PLAYER_COLLISION
-			: type;
-		const auto sublevel = level + 1;
-		for (const auto j : segnum->shared_segment::children)
-			if (IS_CHILD(j))
-				pae_aux(segnum.absolute_sibling(j), subtype, sublevel, New_awareness);
-	}
-}
-
-
-// ----------------------------------------------------------------------------------
-static void process_awareness_events(fvcsegptridx &vcsegptridx, d_level_unique_robot_awareness_state &LevelUniqueRobotAwarenessState, awareness_t &New_awareness)
-{
-	const auto Num_awareness_events = std::exchange(LevelUniqueRobotAwarenessState.Num_awareness_events, 0);
+	unsigned result = 0;
 	if (!(Game_mode & GM_MULTI) || (Game_mode & GM_MULTI_ROBOTS))
 	{
+		const auto Num_awareness_events = std::exchange(LevelUniqueRobotAwarenessState.Num_awareness_events, 0);
+		if (!Num_awareness_events)
+			return Num_awareness_events;
+		result = Num_awareness_events;
 		New_awareness.fill(player_awareness_type_t::PA_NONE);
+		const unsigned allowed_recursions_remaining =
+#if defined(DXX_BUILD_DESCENT_II)
+			!EMULATING_D1 ? 3 :
+#endif
+			4;
 		range_for (auto &i, partial_const_range(LevelUniqueRobotAwarenessState.Awareness_events, Num_awareness_events))
-			pae_aux(vcsegptridx(i.segnum), i.type, 1, New_awareness);
+			pae_aux(vcsegptridx(i.segnum), i.type, New_awareness, allowed_recursions_remaining);
 	}
+	return result;
 }
 
 // ----------------------------------------------------------------------------------
@@ -4520,20 +4516,24 @@ static void set_player_awareness_all(fvmobjptr &vmobjptr, fvcsegptridx &vcsegptr
 {
 	awareness_t New_awareness;
 
-	process_awareness_events(vcsegptridx, LevelUniqueRobotAwarenessState, New_awareness);
+	if (!process_awareness_events(vcsegptridx, LevelUniqueRobotAwarenessState, New_awareness))
+		return;
 
 	range_for (const auto &&objp, vmobjptr)
 	{
-		if (objp->type == OBJ_ROBOT && objp->control_source == object::control_type::ai)
+		object &obj = objp;
+		if (obj.type == OBJ_ROBOT && obj.control_source == object::control_type::ai)
 		{
-			auto &ailp = objp->ctype.ai_info.ail;
-			if (New_awareness[objp->segnum] > ailp.player_awareness_type) {
-				ailp.player_awareness_type = New_awareness[objp->segnum];
+			auto &ailp = obj.ctype.ai_info.ail;
+			auto &na = New_awareness[obj.segnum];
+			if (ailp.player_awareness_type < na)
+			{
+				ailp.player_awareness_type = na;
 				ailp.player_awareness_time = PLAYER_AWARENESS_INITIAL_TIME;
 
 #if defined(DXX_BUILD_DESCENT_II)
 			// Clear the bit that says this robot is only awake because a camera woke it up.
-				objp->ctype.ai_info.SUB_FLAGS &= ~SUB_FLAGS_CAMERA_AWAKE;
+				obj.ctype.ai_info.SUB_FLAGS &= ~SUB_FLAGS_CAMERA_AWAKE;
 #endif
 			}
 		}

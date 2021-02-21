@@ -45,15 +45,14 @@ int main(int c, char **v)
 	return doPlay(v[1]);
 }
 
-static unsigned int fileRead(void *handle, void *buf, unsigned int count)
+unsigned int MovieFileRead(void *handle, void *buf, unsigned int count)
 {
 	unsigned numread;
-
 	numread = fread(buf, 1, count, (FILE *)handle);
 	return (numread == count);
 }
 
-static void showFrame(unsigned char *buf, int dstx, int dsty, int bufw, int bufh, int sw, int sh)
+void MovieShowFrame(unsigned char *buf, int dstx, int dsty, int bufw, int bufh, int sw, int sh)
 {
 	int i;
 	unsigned char *pal;
@@ -100,7 +99,7 @@ static void showFrame(unsigned char *buf, int dstx, int dsty, int bufw, int bufh
 	SDL_FreeSurface(sprite);
 }
 
-static void setPalette(unsigned char *p, unsigned start, unsigned count)
+void MovieSetPalette(const unsigned char *p, unsigned start, unsigned count)
 {
 	//Set color 0 to be black
 	g_palette[0] = g_palette[1] = g_palette[2] = 0;
@@ -145,6 +144,16 @@ static int pollEvents()
 	return 0;
 }
 
+void *MovieMemoryAllocate(std::size_t size)
+{
+	return malloc(size);
+}
+
+void MovieMemoryFree(void *p)
+{
+	free(p);
+}
+
 static int doPlay(const char *filename)
 {
 	int result;
@@ -162,10 +171,6 @@ static int doPlay(const char *filename)
 	memset(g_palette, 0, 768);
 
 	MVE_sndInit(1);
-	MVE_memCallbacks(malloc, free);
-	MVE_ioCallbacks(fileRead);
-	MVE_sfCallbacks(showFrame);
-	MVE_palCallbacks(setPalette);
 
 	MVE_rmPrepMovie(mve, -1, -1, 1);
 

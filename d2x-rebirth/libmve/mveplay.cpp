@@ -236,7 +236,7 @@ class MVE_audio_deleter
 public:
 	void operator()(int16_t *p) const
 	{
-		mve_free(p);
+		MovieMemoryFree(p);
 	}
 };
 
@@ -433,13 +433,13 @@ static int audio_data_handler(unsigned char major, unsigned char, const unsigned
 				if (flags & MVE_AUDIO_FLAGS_COMPRESSED) {
 					nsamp += 4;
 
-					p.reset(reinterpret_cast<int16_t *>(mve_alloc(nsamp)));
+					p.reset(reinterpret_cast<int16_t *>(MovieMemoryAllocate(nsamp)));
 					mveaudio_uncompress(p.get(), data); /* XXX */
 				} else {
 					nsamp -= 8;
 					data += 8;
 
-					p.reset(reinterpret_cast<int16_t *>(mve_alloc(nsamp)));
+					p.reset(reinterpret_cast<int16_t *>(MovieMemoryAllocate(nsamp)));
 					memcpy(p.get(), data, nsamp);
 				}
 				if (DigiVolume < 8)
@@ -457,7 +457,7 @@ static int audio_data_handler(unsigned char major, unsigned char, const unsigned
 					}
 				}
 			} else {
-				p.reset(reinterpret_cast<int16_t *>(mve_alloc(nsamp)));
+				p.reset(reinterpret_cast<int16_t *>(MovieMemoryAllocate(nsamp)));
 				memset(p.get(), 0, nsamp); /* XXX */
 			}
 			unsigned buflen = nsamp;
@@ -490,7 +490,7 @@ static int audio_data_handler(unsigned char major, unsigned char, const unsigned
 				{
 				// copy back to the audio buffer
 					const std::size_t converted_buffer_size = cvt.len_cvt;
-					p.reset(reinterpret_cast<int16_t *>(mve_alloc(converted_buffer_size))); // free the old audio buffer
+					p.reset(reinterpret_cast<int16_t *>(MovieMemoryAllocate(converted_buffer_size))); // free the old audio buffer
 					buflen = converted_buffer_size;
 					memcpy(p.get(), cvt.buf, converted_buffer_size);
 				}
@@ -582,7 +582,7 @@ static int create_videobuf_handler(unsigned char, unsigned char minor, const uns
 
 static int display_video_handler(unsigned char, unsigned char, const unsigned char *, int, void *)
 {
-	mve_showframe(g_vBackBuf1, g_destX, g_destY, g_width, g_height, g_screenWidth, g_screenHeight);
+	MovieShowFrame(g_vBackBuf1, g_destX, g_destY, g_width, g_height, g_screenWidth, g_screenHeight);
 
 	g_frameUpdated = 1;
 
@@ -613,7 +613,7 @@ static int video_palette_handler(unsigned char, unsigned char, const unsigned ch
 	count = get_short(data+2);
 
 	auto p = data + 4;
-	mve_setpalette(p - 3*start, start, count);
+	MovieSetPalette(p - 3*start, start, count);
 	return 1;
 }
 
@@ -656,27 +656,6 @@ static int end_chunk_handler(unsigned char, unsigned char, const unsigned char *
 {
 	g_pCurMap=NULL;
 	return 1;
-}
-
-void MVE_ioCallbacks(mve_cb_Read io_read)
-{
-	mve_read = io_read;
-}
-
-void MVE_memCallbacks(mve_cb_Alloc mem_alloc, mve_cb_Free mem_free)
-{
-	mve_alloc = mem_alloc;
-	mve_free = mem_free;
-}
-
-void MVE_sfCallbacks(mve_cb_ShowFrame showframe)
-{
-	mve_showframe = showframe;
-}
-
-void MVE_palCallbacks(mve_cb_SetPalette setpalette)
-{
-	mve_setpalette = setpalette;
 }
 
 int MVE_rmPrepMovie(MVESTREAM_ptr_t &pMovie, void *src, int x, int y, int)

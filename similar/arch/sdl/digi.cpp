@@ -9,15 +9,14 @@
  * Library-independent stub for dynamic selection of sound system
  */
 
+#include <stdexcept>
 #include "dxxerror.h"
 #include "vecmat.h"
-#include "piggy.h"
 #include "config.h"
 #include "digi.h"
 #include "sounds.h"
 #include "console.h"
 #include "rbaudio.h"
-#include "jukebox.h"
 #include "args.h"
 #include <stdlib.h>
 #include <stdio.h>

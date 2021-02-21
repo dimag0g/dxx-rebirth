@@ -47,19 +47,15 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "key.h"
 #include "config.h"
 #include "object.h"
-#include "physics.h"
 #include "dxxerror.h"
 #include "joy.h"
-#include "iff.h"
 #include "pcx.h"
 #include "timer.h"
 #include "render.h"
 #include "laser.h"
 #include "screens.h"
 #include "textures.h"
-#include "slew.h"
 #include "gauges.h"
-#include "texmap.h"
 #include "3d.h"
 #include "effects.h"
 #include "menu.h"
@@ -91,15 +87,12 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "switch.h"
 #include "controls.h"
 #include "songs.h"
-#include "rbaudio.h"
 
 #include "multi.h"
 #include "cntrlcen.h"
 #include "pcx.h"
 #include "state.h"
 #include "piggy.h"
-#include "multibot.h"
-#include "fvi.h"
 #include "ai.h"
 #include "robot.h"
 #include "playsave.h"
@@ -187,7 +180,11 @@ void reset_palette_add()
 	PaletteBlueAdd		= 0;
 }
 
-screen_mode Game_screen_mode{640, 480};
+#if !DXX_USE_OGL
+constexpr screen_mode initial_small_game_screen_mode{320, 200};
+#endif
+constexpr screen_mode initial_large_game_screen_mode{1024, 768};
+screen_mode Game_screen_mode = initial_large_game_screen_mode;
 
 }
 
@@ -211,7 +208,7 @@ void init_cockpit()
 #if defined(DXX_BUILD_DESCENT_II)
 		int HiresGFXAvailable = !GameArg.GfxSkipHiresGFX;
 #endif
-		auto full_screen_mode = HiresGFXAvailable ? screen_mode{640, 480} : screen_mode{320, 200};
+		auto full_screen_mode = HiresGFXAvailable ? initial_large_game_screen_mode : initial_small_game_screen_mode;
 		if (Game_screen_mode != full_screen_mode) {
 			PlayerCfg.CockpitMode[1] = CM_FULL_SCREEN;
 		}
@@ -863,7 +860,6 @@ void save_screen_shot(int automap_flag)
 #undef DXX_SCREENSHOT_TIME_FORMAT_STRING
 #undef DXX_SCREENSHOT_FILE_EXTENSION
 	}
-	unsigned write_error;
 	if (const auto file = PHYSFSX_openWriteBuffered(savename))
 	{
 	if (!automap_flag)
@@ -874,11 +870,11 @@ void save_screen_shot(int automap_flag)
 	glReadBuffer(GL_FRONT);
 #endif
 #if DXX_USE_SCREENSHOT_FORMAT_PNG
-	write_error = write_screenshot_png(file, tm, grd_curscreen->sc_canvas.cv_bitmap, void /* unused */);
+	auto write_error = write_screenshot_png(file, tm, grd_curscreen->sc_canvas.cv_bitmap, void /* unused */);
 #elif DXX_USE_SCREENSHOT_FORMAT_LEGACY
 	write_bmp(file, grd_curscreen->get_screen_width(), grd_curscreen->get_screen_height());
 	/* write_bmp never fails */
-	write_error = 0;
+	std::false_type write_error;
 #endif
 #else
 	grs_canvas &screen_canv = grd_curscreen->sc_canvas;
@@ -896,11 +892,13 @@ void save_screen_shot(int automap_flag)
 		i.b <<= 2;
 	}
 #if DXX_USE_SCREENSHOT_FORMAT_PNG
-	write_error = write_screenshot_png(file, tm, grd_curscreen->sc_canvas.cv_bitmap, pal);
+	auto write_error = write_screenshot_png(file, tm, grd_curscreen->sc_canvas.cv_bitmap, pal);
 #elif DXX_USE_SCREENSHOT_FORMAT_LEGACY
-	write_error = pcx_write_bitmap(file, &temp_canv->cv_bitmap, pal);
+	auto write_error = pcx_write_bitmap(file, &temp_canv->cv_bitmap, pal);
 #endif
 #endif
+	if (write_error)
+		PHYSFS_delete(savename);
 	}
 	else
 	{
@@ -910,8 +908,6 @@ void save_screen_shot(int automap_flag)
 			con_printf(CON_URGENT, "Failed to open screenshot file for writing: %s", savename);
 		return;
 	}
-	if (write_error)
-		PHYSFS_delete(savename);
 }
 #endif
 

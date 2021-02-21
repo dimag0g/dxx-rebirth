@@ -36,7 +36,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "fwd-segment.h"
 #include "window.h"
 #include "d_array.h"
-#include "gauges.h"
 #include "kconfig.h"
 #include "wall.h"
 
@@ -58,18 +57,13 @@ extern fix FrameTime;           // time in seconds since last frame
 extern fix64 GameTime64;            // time in game (sum of FrameTime)
 extern int d_tick_count; // increments according to DESIGNATED_GAME_FRAMETIME
 extern int d_tick_step;  // true once in interval of DESIGNATED_GAME_FRAMETIME
+enum class gauge_inset_window_view : unsigned;
 }
 
 #if defined(DXX_BUILD_DESCENT_II)
 namespace dsx {
 extern struct object *Missile_viewer;
 extern object_signature_t Missile_viewer_sig;
-
-#define CV_NONE     0
-#define CV_ESCORT   1
-#define CV_REAR     2
-#define CV_COOP     3
-#define CV_MARKER   4
 
 extern enumerated_array<unsigned, 2, gauge_inset_window_view> Coop_view_player;     // left & right
 extern enumerated_array<game_marker_index, 2, gauge_inset_window_view> Marker_viewer_num;    // left & right

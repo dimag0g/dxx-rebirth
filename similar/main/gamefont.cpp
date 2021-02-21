@@ -29,11 +29,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gr.h"
 #include "dxxerror.h"
 #include <string.h>
-#include "strutil.h"
 #include "args.h"
 #include "physfsx.h"
 #include "gamefont.h"
 #include "mission.h"
+#include "ogl_init.h"
 #include "config.h"
 
 #include "compiler-range_for.h"
@@ -125,7 +125,7 @@ void gamefont_choose_game_font(int scrx,int scry){
 	{
 		// if there's no texture filtering, scale by int
 		auto &f = fc.font[m];
-		if (!CGameCfg.TexFilt)
+		if (CGameCfg.TexFilt == opengl_texture_filter::classic)
 		{
 			FNTScaleX.reset(scrx / f.x);
 			FNTScaleY.reset(scry / f.y);

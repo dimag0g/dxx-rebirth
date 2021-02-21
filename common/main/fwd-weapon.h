@@ -89,13 +89,16 @@ constexpr std::integral_constant<unsigned, 10> MAX_PRIMARY_WEAPONS{};
 constexpr std::integral_constant<unsigned, 10> MAX_SECONDARY_WEAPONS{};
 #endif
 
-extern const std::array<weapon_id_type, MAX_PRIMARY_WEAPONS> Primary_weapon_to_weapon_info;
+enum primary_weapon_index_t : uint8_t;
+enum secondary_weapon_index_t : uint8_t;
+
+extern const enumerated_array<weapon_id_type, MAX_PRIMARY_WEAPONS, primary_weapon_index_t> Primary_weapon_to_weapon_info;
 //for each primary weapon, what kind of powerup gives weapon
-extern const std::array<powerup_type_t, MAX_PRIMARY_WEAPONS> Primary_weapon_to_powerup;
-extern const std::array<weapon_id_type, MAX_SECONDARY_WEAPONS> Secondary_weapon_to_weapon_info;
+extern const enumerated_array<powerup_type_t, MAX_PRIMARY_WEAPONS, primary_weapon_index_t> Primary_weapon_to_powerup;
+extern const enumerated_array<weapon_id_type, MAX_SECONDARY_WEAPONS, secondary_weapon_index_t> Secondary_weapon_to_weapon_info;
 //for each Secondary weapon, what kind of powerup gives weapon
-extern const std::array<powerup_type_t, MAX_SECONDARY_WEAPONS> Secondary_weapon_to_powerup;
-extern const std::array<uint8_t, MAX_SECONDARY_WEAPONS>    Secondary_ammo_max;
+extern const enumerated_array<powerup_type_t, MAX_SECONDARY_WEAPONS, secondary_weapon_index_t> Secondary_weapon_to_powerup;
+extern const enumerated_array<uint8_t, MAX_SECONDARY_WEAPONS, secondary_weapon_index_t>    Secondary_ammo_max;
 /*
  * reads n weapon_info structs from a PHYSFS_File
  */
@@ -113,9 +116,6 @@ void weapon_info_read_n(weapon_info_array &wi, std::size_t count, PHYSFS_File *f
 #define HAS_SPREADFIRE_FLAG HAS_PRIMARY_FLAG(primary_weapon_index_t::SPREADFIRE_INDEX)
 #define HAS_PLASMA_FLAG     HAS_PRIMARY_FLAG(primary_weapon_index_t::PLASMA_INDEX)
 #define HAS_FUSION_FLAG     HAS_PRIMARY_FLAG(primary_weapon_index_t::FUSION_INDEX)
-
-enum primary_weapon_index_t : uint8_t;
-enum secondary_weapon_index_t : uint8_t;
 
 #define NUM_SMART_CHILDREN  6   // Number of smart children created by default.
 #if defined(DXX_BUILD_DESCENT_I)
@@ -169,7 +169,7 @@ public:
 namespace dsx {
 
 struct player_info;
-void do_primary_weapon_select(player_info &, uint_fast32_t weapon_num);
+void do_primary_weapon_select(player_info &, primary_weapon_index_t weapon_num);
 void do_secondary_weapon_select(player_info &, secondary_weapon_index_t weapon_num);
 void auto_select_primary_weapon(player_info &);
 void auto_select_secondary_weapon(player_info &);
@@ -190,13 +190,13 @@ class has_weapon_result;
 //      HAS_AMMO_FLAG
 #ifdef dsx
 namespace dsx {
-has_weapon_result player_has_primary_weapon(const player_info &, int weapon_num);
+has_weapon_result player_has_primary_weapon(const player_info &, primary_weapon_index_t weapon_num);
 has_weapon_result player_has_secondary_weapon(const player_info &, secondary_weapon_index_t weapon_num);
 
 //called when one of these weapons is picked up
 //when you pick up a secondary, you always get the weapon & ammo for it
-int pick_up_primary(player_info &, int weapon_index);
-int pick_up_secondary(player_info &, int weapon_index, int count, const control_info &Controls);
+int pick_up_primary(player_info &, primary_weapon_index_t weapon_index);
+int pick_up_secondary(player_info &, secondary_weapon_index_t weapon_index, int count, const control_info &Controls);
 
 //called when a primary weapon is picked up
 //returns true if actually picked up

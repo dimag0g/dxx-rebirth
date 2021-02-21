@@ -37,14 +37,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "bm.h"
 #include "3d.h"
 #include "segment.h"
-#include "texmap.h"
 #include "laser.h"
 #include "key.h"
 #include "gameseg.h"
 #include "object.h"
 #include "physics.h"
-#include "slew.h"
-#include "render.h"
 #include "wall.h"
 #include "vclip.h"
 #include "polyobj.h"
@@ -54,14 +51,12 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "dxxerror.h"
 #include "ai.h"
 #include "hostage.h"
-#include "fuelcen.h"
 #include "sounds.h"
 #include "robot.h"
 #include "weapon.h"
 #include "player.h"
 #include "gauges.h"
 #include "powerup.h"
-#include "newmenu.h"
 #include "scores.h"
 #include "effects.h"
 #include "textures.h"
@@ -77,9 +72,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "switch.h"
 #include "palette.h"
 #include "gameseq.h"
-#if DXX_USE_EDITOR
-#include "editor/editor.h"
-#endif
 #include "collide.h"
 #include "escort.h"
 
@@ -1869,7 +1861,7 @@ static void collide_player_and_player(const vmobjptridx_t player1, const vmobjpt
 	return;
 }
 
-static imobjptridx_t maybe_drop_primary_weapon_egg(const object &playerobj, int weapon_index)
+static imobjptridx_t maybe_drop_primary_weapon_egg(const object &playerobj, const primary_weapon_index_t weapon_index)
 {
 	int weapon_flag = HAS_PRIMARY_FLAG(weapon_index);
 	const auto powerup_num = Primary_weapon_to_powerup[weapon_index];
@@ -1879,10 +1871,8 @@ static imobjptridx_t maybe_drop_primary_weapon_egg(const object &playerobj, int 
 	else
 		return object_none;
 }
-}
-}
 
-static void maybe_drop_secondary_weapon_egg(const object_base &playerobj, int weapon_index, int count)
+static void maybe_drop_secondary_weapon_egg(const object_base &playerobj, const secondary_weapon_index_t weapon_index, const int count)
 {
 	const auto powerup_num = Secondary_weapon_to_powerup[weapon_index];
 		int max_count = min(count, 3);
@@ -1890,7 +1880,7 @@ static void maybe_drop_secondary_weapon_egg(const object_base &playerobj, int we
 			call_object_create_egg(playerobj, 1, powerup_num);
 }
 
-static void drop_missile_1_or_4(const object &playerobj,int missile_index)
+static void drop_missile_1_or_4(const object &playerobj, const secondary_weapon_index_t missile_index)
 {
 	unsigned num_missiles = playerobj.ctype.player_info.secondary_ammo[missile_index];
 	const auto powerup_id = Secondary_weapon_to_powerup[missile_index];
@@ -1902,7 +1892,8 @@ static void drop_missile_1_or_4(const object &playerobj,int missile_index)
 	call_object_create_egg(playerobj, num_missiles % 4, powerup_id);
 }
 
-namespace dsx {
+}
+
 void drop_player_eggs(const vmobjptridx_t playerobj)
 {
 	if ((playerobj->type == OBJ_PLAYER) || (playerobj->type == OBJ_GHOST)) {

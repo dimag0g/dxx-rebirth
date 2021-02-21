@@ -34,10 +34,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "textures.h"
 #include "wall.h"
 #include "object.h"
-#include "gamemine.h"
 #include "dxxerror.h"
 #include "console.h"
-#include "config.h"
 #include "gamefont.h"
 #include "gameseg.h"
 #include "switch.h"
@@ -45,7 +43,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "newmenu.h"
 #include "fuelcen.h"
 #include "hash.h"
-#include "key.h"
 #include "piggy.h"
 #include "player.h"
 #include "playsave.h"
@@ -56,22 +53,16 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gameseq.h"
 #include "event.h"
 #include "robot.h"
-#include "gauges.h"
 #include "newdemo.h"
 #include "automap.h"
 #include "piggy.h"
-#include "paging.h"
-#include "titles.h"
 #include "text.h"
 #include "mission.h"
-#include "pcx.h"
-#include "collide.h"
 #include "u_mem.h"
 #include "args.h"
 #include "ai.h"
 #include "fireball.h"
 #include "controls.h"
-#include "laser.h"
 #include "hudmsg.h"
 #include "state.h"
 #include "multi.h"
@@ -85,7 +76,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #endif
 
 #include "compiler-range_for.h"
-#include "d_enumerate.h"
 #include "d_levelstate.h"
 #include "d_range.h"
 #include "partial_range.h"
@@ -855,10 +845,9 @@ static d_game_unique_state::save_slot state_get_savegame_filename(d_game_unique_
 	std::array<newmenu_item, NUM_SAVES + decorative_item_count> m;
 	auto &sc_bmp = userdata.sc_bmp;
 	char id[4];
-	int valid;
 
 	nsaves=0;
-	nm_set_item_text(m[0], "\n\n\n");
+	nm_set_item_text(m[0], "\n\n\n\n");
 	/* Always subtract 1 for the fixed text leader.  Conditionally
 	 * subtract another 1 if the call is for saving, since interactive
 	 * saves should not access the last slot.  The last slot is reserved
@@ -868,7 +857,17 @@ static d_game_unique_state::save_slot state_get_savegame_filename(d_game_unique_
 	range_for (const unsigned i, xrange(max_slots_shown))
 	{
 		state_format_savegame_filename(filename[i], i);
-		valid = 0;
+		nm_type item_type = dsc
+			/* If saving, use input_menu so that the user can pick an
+			 * element and convert it into a text entry field to receive
+			 * the save game title.
+			 */
+			? nm_type::input_menu
+			/* If restoring, use text.  Valid save games will switch the
+			 * type.  Invalid save slots will remain set as text.
+			 */
+			: nm_type::text;
+		uint8_t valid = 0;
 		auto &mi = m[i + decorative_item_count];
 		if (const auto fp = PHYSFSX_openReadBuffered(filename[i].data()))
 		{
@@ -887,7 +886,7 @@ static d_game_unique_state::save_slot state_get_savegame_filename(d_game_unique_
 					PHYSFS_read(fp, desc[i].data(), desc[i].size(), 1);
 					desc[i].back() = 0;
 					if (!dsc)
-						mi.type = nm_type::menu;
+						item_type = nm_type::menu;
 					// Read thumbnail
 					sc_bmp[i] = gr_create_bitmap(THUMBNAIL_W,THUMBNAIL_H );
 					PHYSFS_read(fp, sc_bmp[i]->get_bitmap_data(), THUMBNAIL_W * THUMBNAIL_H, 1);
@@ -902,18 +901,21 @@ static d_game_unique_state::save_slot state_get_savegame_filename(d_game_unique_
 					valid = 1;
 				}
 			}
-		} 
-		mi.text = desc[i].data();
-		if (!valid) {
-			strcpy(desc[i].data(), TXT_EMPTY);
-			if (!dsc)
-				mi.type = nm_type::text;
 		}
-		if (dsc)
+		mi.text = desc[i].data();
+		if (!valid)
+			/* Defer setting a default value to here.  This allows the
+			 * value to be written only if a better one was not
+			 * retrieved from a save game file.
+			 */
+			strcpy(desc[i].data(), TXT_EMPTY);
+		mi.type = item_type;
+		if (item_type == nm_type::input_menu)
 		{
-			mi.type = nm_type::input_menu;
 			auto &im = mi.imenu();
+			im.allowed_chars = nullptr;
 			im.text_len = desc[i].size() - 1;
+			im.group = 0;
 		}
 	}
 

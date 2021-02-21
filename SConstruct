@@ -1399,7 +1399,7 @@ static void terminate_handler()
 	PHYSFS_delete("");
 '''
 		l = ['physfs']
-		successflags = {'LIBS' : l}
+		successflags = self.pkgconfig.merge(context, self.msgprefix, self.user_settings, 'physfs', 'physfs', {'LIBS' : l})
 		e = self._soft_check_system_library(context, header=_header, main=main, lib='physfs', successflags=successflags)
 		if not e:
 			return
@@ -4686,7 +4686,6 @@ class DXXArchive(DXXCommon):
 	class DarwinPlatformSettings(DXXCommon.DarwinPlatformSettings):
 		get_platform_objects = LazyObjectConstructor.create_lazy_object_getter((
 			'common/arch/cocoa/messagebox.mm',
-			'common/arch/cocoa/SDLMain.m',
 		))
 
 	def __init__(self,user_settings):

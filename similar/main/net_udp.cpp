@@ -22,27 +22,20 @@
 #include "timer.h"
 #include "newmenu.h"
 #include "key.h"
-#include "gauges.h"
 #include "object.h"
 #include "dxxerror.h"
 #include "laser.h"
-#include "gamesave.h"
-#include "gamemine.h"
 #include "player.h"
 #include "gameseq.h"
-#include "fireball.h"
 #include "net_udp.h"
 #include "game.h"
 #include "multi.h"
-#include "endlevel.h"
 #include "palette.h"
-#include "cntrlcen.h"
 #include "powerup.h"
 #include "menu.h"
 #include "gameseg.h"
 #include "sounds.h"
 #include "text.h"
-#include "kmatrix.h"
 #include "newdemo.h"
 #include "multibot.h"
 #include "state.h"
@@ -53,14 +46,12 @@
 #include "hudmsg.h"
 #include "switch.h"
 #include "textures.h"
-#include "automap.h"
 #include "event.h"
 #include "playsave.h"
 #include "gamefont.h"
-#include "rbaudio.h"
-#include "config.h"
 #include "vers_id.h"
 #include "u_mem.h"
+#include "weapon.h"
 
 #include "compiler-cf_assert.h"
 #include "compiler-range_for.h"
@@ -2732,9 +2723,9 @@ void net_udp_send_game_info_t::apply(const sockaddr &sender_addr, socklen_t send
 
 }
 
-static unsigned MouselookMPFlag(const unsigned game_mode)
+static unsigned MouselookMPFlag(const unsigned game_is_cooperative)
 {
-	return (game_mode & GM_MULTI_COOP) ? MouselookMode::MPCoop : MouselookMode::MPAnarchy;
+	return game_is_cooperative ? MouselookMode::MPCoop : MouselookMode::MPAnarchy;
 }
 
 static void net_udp_broadcast_game_info(ubyte info_upid)
@@ -3412,7 +3403,7 @@ constexpr std::integral_constant<unsigned, 5 * reactor_invul_time_mini_scale> re
 	DXX_MENUITEM(VERB, CHECK, "Bright player ships", opt_bright, Netgame.BrightPlayers)	\
 	DXX_MENUITEM(VERB, CHECK, "Show enemy names on HUD", opt_show_names, Netgame.ShowEnemyNames)	\
 	DXX_MENUITEM(VERB, CHECK, "No friendly fire (Team, Coop)", opt_ffire, Netgame.NoFriendlyFire)	\
-	DXX_MENUITEM(VERB, FCHECK, (Game_mode & GM_MULTI_COOP) ? "Allow coop mouselook" : "Allow anarchy mouselook", opt_mouselook, Netgame.MouselookFlags, MouselookMPFlag(Game_mode))	\
+	DXX_MENUITEM(VERB, FCHECK, game_is_cooperative ? "Allow coop mouselook" : "Allow anarchy mouselook", opt_mouselook, Netgame.MouselookFlags, MouselookMPFlag(game_is_cooperative))	\
 	DXX_MENUITEM(VERB, TEXT, "", blank_4)                                     \
 	DXX_MENUITEM_AUTOSAVE_LABEL_INPUT(VERB)	\
 	DXX_MENUITEM(VERB, TEXT, "", blank_6)                                     \
@@ -3455,7 +3446,7 @@ int netgame_powerups_allowed_menu::subfunction_handler(const d_event &event)
 				for (auto &&[mi, i] : enumerate(m))
 					if (mi.value)
 						AllowedItems |= (1 << i);
-				Netgame.AllowedItems = (Netgame.AllowedItems & ~NETFLAG_DOPOWERUP) | AllowedItems;
+				Netgame.AllowedItems = AllowedItems;
 				break;
 			}
 		default:
@@ -4040,7 +4031,7 @@ window_event_result net_udp_setup_game()
 	Netgame.BrightPlayers = 1;
 	Netgame.InvulAppear = 4;
 	Netgame.SecludedSpawns = MAX_PLAYERS - 1;
-	Netgame.AllowedItems = NETFLAG_DOPOWERUP;
+	Netgame.AllowedItems = Netgame.MaskAllKnownAllowedItems;
 	Netgame.PacketLossPrevention = 1;
 	Netgame.NoFriendlyFire = 0;
 	Netgame.MouselookFlags = 0;

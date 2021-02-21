@@ -20,12 +20,6 @@ constexpr short MVE_HDRCONST1 = 0x001A;
 constexpr short MVE_HDRCONST2 = 0x0100;
 constexpr short MVE_HDRCONST3 = 0x1133;
 
-mve_cb_Read mve_read;
-mve_cb_Alloc mve_alloc;
-mve_cb_Free mve_free;
-mve_cb_ShowFrame mve_showframe;
-mve_cb_SetPalette mve_setpalette;
-
 /*
  * private utility functions
  */
@@ -292,7 +286,7 @@ static int _mvefile_read_header(const MVEFILE *movie)
         return 0;
 
     /* check the file is long enough */
-    if (! mve_read(movie->stream, buffer, 26))
+	if (!MovieFileRead(movie->stream, buffer, 26))
         return 0;
 
     /* check the signature */
@@ -333,7 +327,7 @@ static int _mvefile_fetch_next_chunk(MVEFILE *movie)
         return 0;
 
     /* fail if we can't read the next segment descriptor */
-    if (! mve_read(movie->stream, buffer, 4))
+	if (!MovieFileRead(movie->stream, buffer, 4))
         return 0;
 
     /* pull out the next length */
@@ -343,7 +337,7 @@ static int _mvefile_fetch_next_chunk(MVEFILE *movie)
     _mvefile_set_buffer_size(movie, length);
 
     /* read the chunk */
-    if (! mve_read(movie->stream, &movie->cur_chunk[0], length))
+	if (!MovieFileRead(movie->stream, &movie->cur_chunk[0], length))
         return 0;
     movie->cur_chunk.resize(length);
     movie->next_segment = 0;
